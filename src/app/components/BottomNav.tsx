@@ -1,11 +1,12 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router';
-import { ShoppingCart, ClipboardList, Package } from 'lucide-react';
+import { ShoppingCart, ClipboardList, Package, UserCircle } from 'lucide-react';
 
 const tabs = [
   { path: '/', icon: ShoppingCart, label: 'Transaksi' },
   { path: '/log', icon: ClipboardList, label: 'Riwayat' },
   { path: '/stock', icon: Package, label: 'Stok' },
+  { path: '/profile', icon: UserCircle, label: 'Akun' },
 ];
 
 export function BottomNav() {
@@ -18,7 +19,7 @@ export function BottomNav() {
       boxShadow: '-4px -4px 12px #ffffff, 4px 0px 12px #c8cad1',
       display: 'flex',
       alignItems: 'center',
-      padding: '0 8px',
+      padding: '0 4px',
       height: 64,
       flexShrink: 0,
     }}>
@@ -36,15 +37,15 @@ export function BottomNav() {
               alignItems: 'center',
               justifyContent: 'center',
               gap: 4,
-              padding: '8px 4px',
+              padding: '8px 2px',
               border: 'none',
               background: 'transparent',
               cursor: 'pointer',
             }}
           >
             <div style={{
-              width: 42,
-              height: 42,
+              width: 40,
+              height: 40,
               borderRadius: '12px',
               display: 'flex',
               alignItems: 'center',
@@ -56,7 +57,7 @@ export function BottomNav() {
               transition: 'box-shadow 0.2s',
             }}>
               <Icon
-                size={20}
+                size={19}
                 color={isActive ? '#4a90d9' : '#9a9db5'}
                 strokeWidth={isActive ? 2.5 : 1.8}
               />

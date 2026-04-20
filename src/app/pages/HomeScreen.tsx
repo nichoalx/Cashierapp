@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X } from 'lucide-react';
+import { X, MessageSquare } from 'lucide-react';
 import { useAppStore, formatRupiah, TransactionItem } from '../store';
 import { PriceTicker } from '../components/PriceTicker';
 import { PriceEditorModal } from '../components/PriceEditorModal';
@@ -21,6 +21,8 @@ export default function HomeScreen() {
   const [items, setItems] = useState<TransactionItem[]>([]);
   const [showPriceEditor, setShowPriceEditor] = useState(false);
   const [completedFlash, setCompletedFlash] = useState(false);
+  const [remarks, setRemarks] = useState('');
+  const [showRemarks, setShowRemarks] = useState(false);
 
   const selectedProduct = step.type === 'quantity' ? step : null;
 
@@ -88,10 +90,12 @@ export default function HomeScreen() {
 
   const handleComplete = () => {
     if (items.length === 0) return;
-    addTransaction(items);
+    addTransaction(items, remarks.trim() || undefined);
     setItems([]);
     setStep({ type: 'idle' });
     setInputValue('0');
+    setRemarks('');
+    setShowRemarks(false);
     setCompletedFlash(true);
     setTimeout(() => setCompletedFlash(false), 1500);
   };
@@ -157,23 +161,32 @@ export default function HomeScreen() {
             <span style={{ fontSize: '13px', fontWeight: 700, color: '#52b96a' }}>Transaksi Berhasil!</span>
           </div>
         ) : (
-          items.map(item => (
-            <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 5 }}>
-              <div style={{ width: 6, height: 6, borderRadius: '50%', background: item.color, flexShrink: 0 }} />
-              <span style={{ fontSize: '11px', fontWeight: 600, color: '#2d3142', flex: 1 }}>
-                {item.productShortName}{item.plasticSize ? ` ${item.plasticSize}` : ''}
-              </span>
-              <span style={{ fontSize: '10px', color: '#7a7d96' }}>
-                {item.quantity % 1 === 0 ? item.quantity : item.quantity.toFixed(1)} {item.unit}
-              </span>
-              <span style={{ fontSize: '11px', fontWeight: 700, color: '#4a4e69', minWidth: 72, textAlign: 'right' }}>
-                {formatRupiah(item.total)}
-              </span>
-              <button onClick={() => removeItem(item.id)} style={{ background: 'transparent', border: 'none', color: '#e05a6a', cursor: 'pointer', padding: 2 }}>
-                <X size={11} />
-              </button>
-            </div>
-          ))
+          <>
+            {items.map(item => (
+              <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 5 }}>
+                <div style={{ width: 6, height: 6, borderRadius: '50%', background: item.color, flexShrink: 0 }} />
+                <span style={{ fontSize: '11px', fontWeight: 600, color: '#2d3142', flex: 1 }}>
+                  {item.productShortName}{item.plasticSize ? ` ${item.plasticSize}` : ''}
+                </span>
+                <span style={{ fontSize: '10px', color: '#7a7d96' }}>
+                  {item.quantity % 1 === 0 ? item.quantity : item.quantity.toFixed(1)} {item.unit}
+                </span>
+                <span style={{ fontSize: '11px', fontWeight: 700, color: '#4a4e69', minWidth: 72, textAlign: 'right' }}>
+                  {formatRupiah(item.total)}
+                </span>
+                <button onClick={() => removeItem(item.id)} style={{ background: 'transparent', border: 'none', color: '#e05a6a', cursor: 'pointer', padding: 2 }}>
+                  <X size={11} />
+                </button>
+              </div>
+            ))}
+            {/* Remarks display in cart */}
+            {remarks && (
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 5, marginTop: 4, paddingTop: 6, borderTop: '1px solid rgba(0,0,0,0.05)' }}>
+                <MessageSquare size={10} color="#9a9db5" style={{ marginTop: 1, flexShrink: 0 }} />
+                <span style={{ fontSize: '10px', color: '#7a7d96', fontStyle: 'italic' }}>{remarks}</span>
+              </div>
+            )}
+          </>
         )}
       </div>
 
@@ -221,12 +234,12 @@ export default function HomeScreen() {
             )}
           </div>
 
-          {/* Number display with blinking cursor */}
+          {/* Number display — "0" replaced by cursor only */}
           <div style={{
             fontFamily: "'Courier New', 'Courier', monospace",
             fontSize: '34px',
             fontWeight: 700,
-            color: inputValue === '0' ? '#2a3050' : '#dde2f0',
+            color: '#dde2f0',
             textAlign: 'right',
             letterSpacing: '0.06em',
             lineHeight: 1,
@@ -236,11 +249,21 @@ export default function HomeScreen() {
             justifyContent: 'flex-end',
             gap: 1,
           }}>
-            <span>{inputValue || '0'}</span>
+            <span>{inputValue === '0' ? '' : inputValue}</span>
             {step.type !== 'idle' && (
               <span style={{
                 display: 'inline-block',
-                color: selectedProduct ? '#7ee8a2' : '#3a4060',
+                color: selectedProduct ? '#7ee8a2' : '#3a5040',
+                animation: 'cursor-blink 1s step-end infinite',
+                fontSize: '30px',
+                lineHeight: 1,
+                marginBottom: '2px',
+              }}>|</span>
+            )}
+            {step.type === 'idle' && (
+              <span style={{
+                display: 'inline-block',
+                color: '#2a3050',
                 animation: 'cursor-blink 1s step-end infinite',
                 fontSize: '30px',
                 lineHeight: 1,
@@ -331,6 +354,52 @@ export default function HomeScreen() {
             </div>
           </div>
         )}
+
+        {/* Remarks tray — between product grid and numpad */}
+        <div style={{
+          background: '#eef0f5',
+          boxShadow: showRemarks
+            ? 'inset 3px 3px 7px #c8cad1, inset -3px -3px 7px #ffffff'
+            : '4px 4px 9px #c8cad1, -4px -4px 9px #ffffff',
+          borderRadius: '13px',
+          overflow: 'hidden',
+          transition: 'all 0.2s',
+        }}>
+          <button
+            onClick={() => setShowRemarks(s => !s)}
+            style={{
+              width: '100%', background: 'transparent', border: 'none', cursor: 'pointer',
+              padding: '9px 13px',
+              display: 'flex', alignItems: 'center', gap: 8,
+            }}
+          >
+            <MessageSquare size={13} color={remarks ? '#4a90d9' : '#9a9db5'} />
+            <span style={{ fontSize: '11px', fontWeight: 600, color: remarks ? '#4a90d9' : '#9a9db5', flex: 1, textAlign: 'left' }}>
+              {remarks ? remarks : 'Catatan (opsional)'}
+            </span>
+            <span style={{ fontSize: '10px', color: '#c0c4d0' }}>{showRemarks ? '▲' : '▼'}</span>
+          </button>
+          {showRemarks && (
+            <div style={{ padding: '0 12px 10px' }}>
+              <textarea
+                placeholder="Contoh: Pelanggan khusus, pembayaran tempo, dll."
+                value={remarks}
+                onChange={e => setRemarks(e.target.value)}
+                rows={2}
+                style={{
+                  width: '100%', boxSizing: 'border-box',
+                  background: '#eef0f5',
+                  boxShadow: 'inset 2px 2px 5px #c8cad1, inset -2px -2px 5px #ffffff',
+                  borderRadius: '9px', border: 'none', outline: 'none',
+                  padding: '9px 11px', fontSize: '12px', color: '#2d3142',
+                  resize: 'none', lineHeight: 1.5,
+                  fontFamily: 'inherit',
+                }}
+                autoFocus
+              />
+            </div>
+          )}
+        </div>
 
         {/* Numpad */}
         <Numpad

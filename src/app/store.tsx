@@ -41,6 +41,7 @@ export interface Transaction {
   items: TransactionItem[];
   total: number;
   timestamp: Date;
+  remarks?: string;
 }
 
 export interface StockItem {
@@ -69,7 +70,7 @@ interface AppContextType {
   updatePlasticBasePrice: (price: number) => void;
   addPlasticSize: (size: string) => void;
   removePlasticSize: (id: string) => void;
-  addTransaction: (items: TransactionItem[]) => void;
+  addTransaction: (items: TransactionItem[], remarks?: string) => void;
   updateTransaction: (id: string, items: TransactionItem[]) => void;
   deleteTransaction: (id: string) => void;
   addStock: (productId: string, quantity: number) => void;
@@ -179,9 +180,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setPlasticSizes(p => p.filter(x => x.id !== id));
   }, []);
 
-  const addTransaction = useCallback((items: TransactionItem[]) => {
+  const addTransaction = useCallback((items: TransactionItem[], remarks?: string) => {
     const total = items.reduce((s, i) => s + i.total, 0);
-    const tx: Transaction = { id: genId(), orderNumber: orderCounter, items, total, timestamp: new Date() };
+    const tx: Transaction = { id: genId(), orderNumber: orderCounter, items, total, timestamp: new Date(), remarks };
     setTransactions(p => [tx, ...p]);
     setOrderCounter(c => c + 1);
     // Decrement stock

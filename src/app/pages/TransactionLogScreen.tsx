@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Pencil, Trash2, X, Check, ChevronDown, ChevronUp, ChevronLeft, ChevronRight } from 'lucide-react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { Pencil, Trash2, X, Check, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Search, MessageSquare } from 'lucide-react';
 import { useAppStore, formatRupiah, Transaction, TransactionItem } from '../store';
 import { PriceTicker } from '../components/PriceTicker';
 import { PriceEditorModal } from '../components/PriceEditorModal';
@@ -324,12 +324,58 @@ export default function TransactionLogScreen() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState(new Date());
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterType, setFilterType] = useState<'all' | 'soybean' | 'plastic' | 'other'>('all');
+
+  const SOYBEAN_IDS = ['mrb', 'sbs', 'bh', 'e'];
+  const PLASTIC_ID = 'plastic';
+  const OTHER_IDS = ['tempe', 'dages'];
 
   const dayTxs = transactions.filter(t => isSameDay(t.timestamp, selectedDate));
-  const dayTotal = dayTxs.reduce((s, t) => s + t.total, 0);
+
+  const filteredTxs = useMemo(() => {
+    let list = dayTxs;
+
+    // Product type filter
+    if (filterType !== 'all') {
+      list = list.filter(t => {
+        if (filterType === 'soybean') return t.items.some(i => SOYBEAN_IDS.includes(i.productId));
+        if (filterType === 'plastic') return t.items.some(i => i.productId === PLASTIC_ID);
+        if (filterType === 'other') return t.items.some(i => OTHER_IDS.includes(i.productId));
+        return true;
+      });
+    }
+
+    // Text search
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter(t => {
+        const matchOrder = String(t.orderNumber).includes(q);
+        const matchRemarks = t.remarks?.toLowerCase().includes(q);
+        const matchProduct = t.items.some(i =>
+          i.productName.toLowerCase().includes(q) ||
+          i.productShortName.toLowerCase().includes(q) ||
+          String(i.quantity).includes(q)
+        );
+        return matchOrder || matchRemarks || matchProduct;
+      });
+    }
+
+    return list;
+  }, [dayTxs, filterType, searchQuery]);
+
+  const dayTotal = filteredTxs.reduce((s, t) => s + t.total, 0);
+  const rawDayTotal = dayTxs.reduce((s, t) => s + t.total, 0);
+
+  const filterChips: { key: typeof filterType; label: string }[] = [
+    { key: 'all', label: 'Semua' },
+    { key: 'soybean', label: 'Kedelai' },
+    { key: 'plastic', label: 'Plastik' },
+    { key: 'other', label: 'Lainnya' },
+  ];
 
   return (
-    <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: '16px 16px 8px', gap: 12 }}>
+    <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: '16px 16px 8px', gap: 10 }}>
       {showPriceEditor && <PriceEditorModal onClose={() => setShowPriceEditor(false)} />}
       {editingTx && (
         <EditModal
@@ -348,35 +394,89 @@ export default function TransactionLogScreen() {
       <div style={{
         background: '#eef0f5',
         boxShadow: '6px 6px 14px #c8cad1, -6px -6px 14px #ffffff',
-        borderRadius: '18px',
-        padding: '14px 18px',
+        borderRadius: '16px',
+        padding: '12px 16px',
       }}>
-        <div style={{ fontSize: '10px', color: '#9a9db5', letterSpacing: '0.08em', marginBottom: 4 }}>
+        <div style={{ fontSize: '10px', color: '#9a9db5', letterSpacing: '0.08em', marginBottom: 2 }}>
           TOTAL {isSameDay(selectedDate, new Date()) ? 'HARI INI' : MONTHS[selectedDate.getMonth()].toUpperCase() + ' ' + selectedDate.getDate()}
         </div>
-        <div style={{ fontSize: '26px', fontWeight: 700, color: '#2d3142', lineHeight: 1.2 }}>
-          {formatRupiah(dayTotal)}
+        <div style={{ fontSize: '24px', fontWeight: 700, color: '#2d3142', lineHeight: 1.2 }}>
+          {formatRupiah(searchQuery || filterType !== 'all' ? dayTotal : rawDayTotal)}
         </div>
-        <div style={{ display: 'flex', gap: 20, marginTop: 8 }}>
+        <div style={{ display: 'flex', gap: 16, marginTop: 6 }}>
           <div>
             <div style={{ fontSize: '9px', color: '#b8bbd0' }}>TRANSAKSI</div>
-            <div style={{ fontSize: '16px', fontWeight: 700, color: '#4a90d9' }}>{dayTxs.length}</div>
+            <div style={{ fontSize: '15px', fontWeight: 700, color: '#4a90d9' }}>
+              {filteredTxs.length}{filteredTxs.length !== dayTxs.length ? `/${dayTxs.length}` : ''}
+            </div>
           </div>
         </div>
       </div>
 
+      {/* ── SEARCH + FILTERS ── */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {/* Search bar */}
+        <div style={{ position: 'relative' }}>
+          <Search size={14} color="#9a9db5" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+          <input
+            type="text"
+            placeholder="Cari order, produk, jumlah, catatan..."
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            style={{
+              width: '100%', boxSizing: 'border-box',
+              background: '#eef0f5',
+              boxShadow: searchQuery
+                ? 'inset 3px 3px 6px #c8cad1, inset -3px -3px 6px #ffffff'
+                : '4px 4px 8px #c8cad1, -4px -4px 8px #ffffff',
+              borderRadius: '12px', border: 'none', outline: 'none',
+              padding: '10px 36px 10px 36px',
+              fontSize: '13px', color: '#2d3142',
+              transition: 'box-shadow 0.15s',
+            }}
+          />
+          {searchQuery && (
+            <button onClick={() => setSearchQuery('')} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 'none', cursor: 'pointer', padding: 2 }}>
+              <X size={13} color="#9a9db5" />
+            </button>
+          )}
+        </div>
+
+        {/* Filter chips */}
+        <div style={{ display: 'flex', gap: 6 }}>
+          {filterChips.map(chip => (
+            <button
+              key={chip.key}
+              onClick={() => setFilterType(chip.key)}
+              style={{
+                flex: 1, padding: '6px 4px', borderRadius: '9px', border: 'none', cursor: 'pointer',
+                fontSize: '10px', fontWeight: 700, letterSpacing: '0.04em',
+                background: '#eef0f5',
+                color: filterType === chip.key ? '#4a90d9' : '#9a9db5',
+                boxShadow: filterType === chip.key
+                  ? 'inset 2px 2px 5px #c8cad1, inset -2px -2px 5px #ffffff'
+                  : '3px 3px 6px #c8cad1, -3px -3px 6px #ffffff',
+                transition: 'all 0.15s',
+              }}
+            >
+              {chip.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Transaction List */}
-      <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {dayTxs.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '40px 20px', color: '#9a9db5' }}>
-            <div style={{ fontSize: '36px', marginBottom: 12 }}>📋</div>
-            <div style={{ fontSize: '14px' }}>Tidak ada transaksi</div>
+      <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {filteredTxs.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '32px 20px', color: '#9a9db5' }}>
+            <div style={{ fontSize: '32px', marginBottom: 10 }}>{searchQuery ? '🔍' : '📋'}</div>
+            <div style={{ fontSize: '13px' }}>{searchQuery ? 'Tidak ditemukan' : 'Tidak ada transaksi'}</div>
             <div style={{ fontSize: '11px', color: '#c0c4d0', marginTop: 4 }}>
-              {MONTHS[selectedDate.getMonth()]} {selectedDate.getDate()}, {selectedDate.getFullYear()}
+              {searchQuery ? `Coba kata kunci lain` : `${MONTHS[selectedDate.getMonth()]} ${selectedDate.getDate()}, ${selectedDate.getFullYear()}`}
             </div>
           </div>
         ) : (
-          dayTxs.map(tx => {
+          filteredTxs.map(tx => {
             const expanded = expandedId === tx.id;
             const confirming = deleteConfirm === tx.id;
             return (
@@ -387,7 +487,6 @@ export default function TransactionLogScreen() {
                 overflow: 'hidden',
                 transition: 'all 0.2s',
               }}>
-                {/* Main row */}
                 <div
                   style={{ padding: '12px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10 }}
                   onClick={() => setExpandedId(expanded ? null : tx.id)}
@@ -412,7 +511,15 @@ export default function TransactionLogScreen() {
                       ))}
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: '12px', color: '#9a9db5' }}>{formatTime(tx.timestamp)}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                        <span style={{ fontSize: '11px', color: '#9a9db5' }}>{formatTime(tx.timestamp)}</span>
+                        {tx.remarks && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                            <MessageSquare size={9} color="#4a90d9" />
+                            <span style={{ fontSize: '9px', color: '#4a90d9', maxWidth: 90, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tx.remarks}</span>
+                          </div>
+                        )}
+                      </div>
                       <span style={{ fontSize: '15px', fontWeight: 700, color: '#2d3142' }}>{formatRupiah(tx.total)}</span>
                     </div>
                   </div>
@@ -420,7 +527,6 @@ export default function TransactionLogScreen() {
                   {expanded ? <ChevronUp size={14} color="#9a9db5" /> : <ChevronDown size={14} color="#9a9db5" />}
                 </div>
 
-                {/* Expanded items */}
                 {expanded && (
                   <div style={{ borderTop: '1px solid rgba(0,0,0,0.05)' }}>
                     <div style={{ padding: '10px 14px' }}>
@@ -434,6 +540,12 @@ export default function TransactionLogScreen() {
                           <span style={{ fontSize: '12px', fontWeight: 600, color: '#2d3142' }}>{formatRupiah(item.total)}</span>
                         </div>
                       ))}
+                      {tx.remarks && (
+                        <div style={{ display: 'flex', gap: 6, paddingTop: 8, borderTop: '1px solid rgba(0,0,0,0.04)', marginTop: 4 }}>
+                          <MessageSquare size={11} color="#4a90d9" style={{ flexShrink: 0, marginTop: 1 }} />
+                          <span style={{ fontSize: '11px', color: '#4a4e69', fontStyle: 'italic' }}>{tx.remarks}</span>
+                        </div>
+                      )}
                     </div>
 
                     <div style={{ padding: '8px 14px 12px', display: 'flex', gap: 8 }}>
@@ -449,28 +561,11 @@ export default function TransactionLogScreen() {
                       </button>
                       {confirming ? (
                         <>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); deleteTransaction(tx.id); setDeleteConfirm(null); setExpandedId(null); }}
-                            style={{ flex: 1, height: 36, borderRadius: '10px', border: 'none', cursor: 'pointer', background: '#e05a6a', color: '#fff', fontSize: '12px', fontWeight: 700 }}
-                          >
-                            Hapus?
-                          </button>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); setDeleteConfirm(null); }}
-                            style={{ width: 36, height: 36, borderRadius: '10px', border: 'none', cursor: 'pointer', background: '#eef0f5', boxShadow: '3px 3px 7px #c8cad1, -3px -3px 7px #ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                          >
-                            <X size={14} color="#9a9db5" />
-                          </button>
+                          <button onClick={(e) => { e.stopPropagation(); deleteTransaction(tx.id); setDeleteConfirm(null); setExpandedId(null); }} style={{ flex: 1, height: 36, borderRadius: '10px', border: 'none', cursor: 'pointer', background: '#e05a6a', color: '#fff', fontSize: '12px', fontWeight: 700 }}>Hapus?</button>
+                          <button onClick={(e) => { e.stopPropagation(); setDeleteConfirm(null); }} style={{ width: 36, height: 36, borderRadius: '10px', border: 'none', cursor: 'pointer', background: '#eef0f5', boxShadow: '3px 3px 7px #c8cad1, -3px -3px 7px #ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={14} color="#9a9db5" /></button>
                         </>
                       ) : (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setDeleteConfirm(tx.id); }}
-                          style={{
-                            flex: 1, height: 36, borderRadius: '10px', border: 'none', cursor: 'pointer',
-                            background: '#eef0f5', boxShadow: '3px 3px 7px #c8cad1, -3px -3px 7px #ffffff',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, color: '#e05a6a', fontSize: '12px', fontWeight: 600,
-                          }}
-                        >
+                        <button onClick={(e) => { e.stopPropagation(); setDeleteConfirm(tx.id); }} style={{ flex: 1, height: 36, borderRadius: '10px', border: 'none', cursor: 'pointer', background: '#eef0f5', boxShadow: '3px 3px 7px #c8cad1, -3px -3px 7px #ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, color: '#e05a6a', fontSize: '12px', fontWeight: 600 }}>
                           <Trash2 size={13} /> Hapus
                         </button>
                       )}
