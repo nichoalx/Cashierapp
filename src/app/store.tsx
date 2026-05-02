@@ -42,6 +42,8 @@ export interface Transaction {
   total: number;
   timestamp: Date;
   remarks?: string;
+  memberId?: string;
+  memberName?: string;
 }
 
 export interface StockItem {
@@ -55,6 +57,22 @@ export interface StockItem {
   color: string;
 }
 
+export interface Member {
+  id: string;
+  name: string;
+  phone: string;
+  createdAt: Date;
+}
+
+export interface StockAddition {
+  id: string;
+  productId: string;
+  productName: string;
+  quantity: number;
+  unit: string;
+  timestamp: Date;
+}
+
 interface AppContextType {
   soybeanProducts: SoybeanProduct[];
   plasticSizes: PlasticSize[];
@@ -62,6 +80,8 @@ interface AppContextType {
   otherProducts: OtherProduct[];
   transactions: Transaction[];
   stock: StockItem[];
+  members: Member[];
+  stockAdditions: StockAddition[];
 
   updateSoybeanPrice: (id: string, price: number) => void;
   addSoybeanProduct: (name: string, fullName: string, price: number) => void;
@@ -70,10 +90,12 @@ interface AppContextType {
   updatePlasticBasePrice: (price: number) => void;
   addPlasticSize: (size: string) => void;
   removePlasticSize: (id: string) => void;
-  addTransaction: (items: TransactionItem[], remarks?: string) => void;
+  addTransaction: (items: TransactionItem[], remarks?: string, memberId?: string, memberName?: string) => void;
   updateTransaction: (id: string, items: TransactionItem[]) => void;
   deleteTransaction: (id: string) => void;
-  addStock: (productId: string, quantity: number) => void;
+  addStock: (productId: string, quantity: number, productName: string, unit: string) => void;
+  addMember: (name: string, phone: string) => void;
+  removeMember: (id: string) => void;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -110,12 +132,18 @@ const INITIAL_STOCK: StockItem[] = [
   { productId: 'dages', productName: 'Dages', quantity: 25, unit: 'pcs', lowThreshold: 80, criticalThreshold: 20, type: 'other', color: '#e05a6a' },
 ];
 
+const INITIAL_MEMBERS: Member[] = [
+  { id: 'm1', name: 'Budi Santoso', phone: '08123456789', createdAt: new Date('2026-01-10') },
+  { id: 'm2', name: 'Siti Rahayu', phone: '08234567890', createdAt: new Date('2026-02-15') },
+  { id: 'm3', name: 'Agus Wijaya', phone: '08345678901', createdAt: new Date('2026-03-01') },
+];
+
 const now = Date.now();
 const INITIAL_TRANSACTIONS: Transaction[] = [
   {
     id: 't1', orderNumber: 1,
     items: [{ id: 'i1', productId: 'mrb', productName: 'Mr. Bean', productShortName: 'MRB', quantity: 25.5, unit: 'kg', unitPrice: 10000, total: 255000, color: '#f5903d' }],
-    total: 255000, timestamp: new Date(now - 7200000),
+    total: 255000, timestamp: new Date(now - 7200000), memberName: 'Budi Santoso',
   },
   {
     id: 't2', orderNumber: 2,
@@ -123,7 +151,7 @@ const INITIAL_TRANSACTIONS: Transaction[] = [
       { id: 'i2', productId: 'sbs', productName: 'SBS', productShortName: 'SBS', quantity: 30, unit: 'kg', unitPrice: 9500, total: 285000, color: '#4a90d9' },
       { id: 'i3', productId: 'tempe', productName: 'Tempe', productShortName: 'T', quantity: 10, unit: 'pcs', unitPrice: 2000, total: 20000, color: '#d4a017' },
     ],
-    total: 305000, timestamp: new Date(now - 5400000),
+    total: 305000, timestamp: new Date(now - 5400000), remarks: 'Pembayaran tempo',
   },
   {
     id: 't3', orderNumber: 3,
@@ -137,6 +165,13 @@ const INITIAL_TRANSACTIONS: Transaction[] = [
   },
 ];
 
+// Sample stock additions for demo
+const INITIAL_STOCK_ADDITIONS: StockAddition[] = [
+  { id: 'sa1', productId: 'mrb', productName: 'Mr. Bean', quantity: 200, unit: 'kg', timestamp: new Date(now - 86400000 * 2) },
+  { id: 'sa2', productId: 'sbs', productName: 'SBS', quantity: 100, unit: 'kg', timestamp: new Date(now - 86400000 * 2) },
+  { id: 'sa3', productId: 'bh', productName: 'Bola Hijau', quantity: 50, unit: 'kg', timestamp: new Date(now - 86400000 * 5) },
+];
+
 export function AppProvider({ children }: { children: ReactNode }) {
   const [soybeanProducts, setSoybeanProducts] = useState<SoybeanProduct[]>(INITIAL_SOYBEAN);
   const [plasticSizes, setPlasticSizes] = useState<PlasticSize[]>(INITIAL_PLASTIC_SIZES);
@@ -144,6 +179,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [otherProducts, setOtherProducts] = useState<OtherProduct[]>(INITIAL_OTHER);
   const [transactions, setTransactions] = useState<Transaction[]>(INITIAL_TRANSACTIONS);
   const [stock, setStock] = useState<StockItem[]>(INITIAL_STOCK);
+  const [members, setMembers] = useState<Member[]>(INITIAL_MEMBERS);
+  const [stockAdditions, setStockAdditions] = useState<StockAddition[]>(INITIAL_STOCK_ADDITIONS);
   const [orderCounter, setOrderCounter] = useState(5);
 
   const updateSoybeanPrice = useCallback((id: string, price: number) => {
@@ -180,12 +217,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setPlasticSizes(p => p.filter(x => x.id !== id));
   }, []);
 
-  const addTransaction = useCallback((items: TransactionItem[], remarks?: string) => {
+  const addTransaction = useCallback((items: TransactionItem[], remarks?: string, memberId?: string, memberName?: string) => {
     const total = items.reduce((s, i) => s + i.total, 0);
-    const tx: Transaction = { id: genId(), orderNumber: orderCounter, items, total, timestamp: new Date(), remarks };
+    const tx: Transaction = { id: genId(), orderNumber: orderCounter, items, total, timestamp: new Date(), remarks, memberId, memberName };
     setTransactions(p => [tx, ...p]);
     setOrderCounter(c => c + 1);
-    // Decrement stock
     setStock(s => s.map(stockItem => {
       const consumed = items.filter(i => i.productId === stockItem.productId || (i.productId === 'plastic' && stockItem.productId === 'plastic'));
       if (consumed.length === 0) return stockItem;
@@ -203,16 +239,33 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setTransactions(p => p.filter(t => t.id !== id));
   }, []);
 
-  const addStock = useCallback((productId: string, quantity: number) => {
+  const addStock = useCallback((productId: string, quantity: number, productName: string, unit: string) => {
     setStock(s => s.map(item => item.productId === productId ? { ...item, quantity: item.quantity + quantity } : item));
+    setStockAdditions(a => [...a, {
+      id: genId(),
+      productId,
+      productName,
+      quantity,
+      unit,
+      timestamp: new Date(),
+    }]);
+  }, []);
+
+  const addMember = useCallback((name: string, phone: string) => {
+    setMembers(m => [...m, { id: genId(), name, phone, createdAt: new Date() }]);
+  }, []);
+
+  const removeMember = useCallback((id: string) => {
+    setMembers(m => m.filter(x => x.id !== id));
   }, []);
 
   return (
     <AppContext.Provider value={{
-      soybeanProducts, plasticSizes, plasticBasePrice, otherProducts, transactions, stock,
+      soybeanProducts, plasticSizes, plasticBasePrice, otherProducts, transactions, stock, members, stockAdditions,
       updateSoybeanPrice, addSoybeanProduct, removeSoybeanProduct,
       updateOtherPrice, updatePlasticBasePrice, addPlasticSize, removePlasticSize,
       addTransaction, updateTransaction, deleteTransaction, addStock,
+      addMember, removeMember,
     }}>
       {children}
     </AppContext.Provider>

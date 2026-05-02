@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Pencil, Trash2, X, Check, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Search, MessageSquare } from 'lucide-react';
+import { Pencil, Trash2, X, Check, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Search, MessageSquare, User } from 'lucide-react';
 import { useAppStore, formatRupiah, Transaction, TransactionItem } from '../store';
 import { PriceTicker } from '../components/PriceTicker';
 import { PriceEditorModal } from '../components/PriceEditorModal';
@@ -352,12 +352,13 @@ export default function TransactionLogScreen() {
       list = list.filter(t => {
         const matchOrder = String(t.orderNumber).includes(q);
         const matchRemarks = t.remarks?.toLowerCase().includes(q);
+        const matchMember = t.memberName?.toLowerCase().includes(q);
         const matchProduct = t.items.some(i =>
           i.productName.toLowerCase().includes(q) ||
           i.productShortName.toLowerCase().includes(q) ||
           String(i.quantity).includes(q)
         );
-        return matchOrder || matchRemarks || matchProduct;
+        return matchOrder || matchRemarks || matchMember || matchProduct;
       });
     }
 
@@ -482,7 +483,7 @@ export default function TransactionLogScreen() {
             return (
               <div key={tx.id} style={{
                 background: '#eef0f5',
-                boxShadow: '5px 5px 12px #c8cad1, -5px -5px 12px #ffffff',
+                boxShadow: '3px 3px 8px #caccd4, -2px -2px 6px rgba(255,255,255,0.75)',
                 borderRadius: '16px',
                 overflow: 'hidden',
                 transition: 'all 0.2s',
@@ -513,6 +514,12 @@ export default function TransactionLogScreen() {
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                         <span style={{ fontSize: '11px', color: '#9a9db5' }}>{formatTime(tx.timestamp)}</span>
+                        {tx.memberName && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                            <User size={9} color="#52b96a" />
+                            <span style={{ fontSize: '9px', color: '#52b96a', maxWidth: 70, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tx.memberName}</span>
+                          </div>
+                        )}
                         {tx.remarks && (
                           <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
                             <MessageSquare size={9} color="#4a90d9" />

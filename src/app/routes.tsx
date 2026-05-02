@@ -6,6 +6,7 @@ import HomeScreen from './pages/HomeScreen';
 import TransactionLogScreen from './pages/TransactionLogScreen';
 import StockScreen from './pages/StockScreen';
 import UserScreen from './pages/UserScreen';
+import MembersScreen from './pages/MembersScreen';
 import WelcomeScreen from './pages/WelcomeScreen';
 import LoginScreen from './pages/LoginScreen';
 
@@ -78,6 +79,7 @@ export const router = createBrowserRouter([
           { path: 'log', Component: TransactionLogScreen },
           { path: 'stock', Component: StockScreen },
           { path: 'profile', Component: UserScreen },
+          { path: 'members', Component: MembersScreen },
         ],
       },
     ],

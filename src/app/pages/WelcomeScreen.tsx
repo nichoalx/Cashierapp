@@ -2,164 +2,182 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../AuthContext';
 
+const ORBS = [
+  { w: 220, h: 220, top: '-60px', left: '-60px',  color: '#c084fc', delay: '0s' },
+  { w: 180, h: 180, top: '30%',   right: '-50px',  color: '#38bdf8', delay: '1.2s' },
+  { w: 140, h: 140, bottom: '15%',left: '10%',     color: '#f472b6', delay: '0.6s' },
+  { w: 100, h: 100, bottom: '-30px', right: '20%', color: '#4ade80', delay: '2s' },
+  { w: 80,  h: 80,  top: '55%',   left: '5%',      color: '#fbbf24', delay: '1.8s' },
+];
+
 export default function WelcomeScreen() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const [phase, setPhase] = useState<'in' | 'hold' | 'out'>('in');
+  const [visible, setVisible] = useState(false);
+  const [exiting, setExiting] = useState(false);
 
   useEffect(() => {
-    const t1 = setTimeout(() => setPhase('hold'), 400);
-    const t2 = setTimeout(() => setPhase('out'), 2600);
-    const t3 = setTimeout(() => {
-      navigate(user ? '/' : '/login', { replace: true });
-    }, 3100);
-    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
-  }, [navigate, user]);
+    const t = setTimeout(() => setVisible(true), 80);
+    return () => clearTimeout(t);
+  }, []);
 
-  const visible = phase === 'hold';
+  const handleTap = () => {
+    if (exiting) return;
+    setExiting(true);
+    setTimeout(() => navigate(user ? '/' : '/login', { replace: true }), 500);
+  };
 
   return (
-    <div style={{
-      width: '100%',
-      height: '100%',
-      background: 'linear-gradient(160deg, #0a2010 0%, #0f3d1e 30%, #1a6b3a 65%, #2ea854 100%)',
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      position: 'relative',
-      overflow: 'hidden',
-    }}>
-      {/* Decorative circles */}
+    <div
+      onClick={handleTap}
+      style={{
+        width: '100%', height: '100%',
+        background: '#07080f',
+        display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center',
+        position: 'relative', overflow: 'hidden',
+        cursor: 'pointer',
+        opacity: exiting ? 0 : 1,
+        transition: 'opacity 0.45s ease',
+      }}
+    >
+      {/* Ambient blobs */}
+      {ORBS.map((o, i) => (
+        <div key={i} style={{
+          position: 'absolute',
+          width: o.w, height: o.h,
+          borderRadius: '50%',
+          background: o.color,
+          filter: 'blur(55px)',
+          opacity: visible ? 0.22 : 0,
+          transition: `opacity 1.2s ease ${o.delay}`,
+          ...(o.top    ? { top: o.top }       : {}),
+          ...(o.bottom ? { bottom: o.bottom } : {}),
+          ...(o.left   ? { left: o.left }     : {}),
+          ...(o.right  ? { right: o.right }   : {}),
+        }} />
+      ))}
+
+      {/* Grain texture overlay */}
       <div style={{
-        position: 'absolute', top: -80, right: -80,
-        width: 280, height: 280, borderRadius: '50%',
-        background: 'rgba(255,255,255,0.03)',
-        border: '1px solid rgba(255,255,255,0.06)',
-      }} />
-      <div style={{
-        position: 'absolute', bottom: -60, left: -60,
-        width: 220, height: 220, borderRadius: '50%',
-        background: 'rgba(255,255,255,0.03)',
-        border: '1px solid rgba(255,255,255,0.06)',
-      }} />
-      <div style={{
-        position: 'absolute', top: '20%', left: -40,
-        width: 140, height: 140, borderRadius: '50%',
-        background: 'rgba(46,168,84,0.08)',
+        position: 'absolute', inset: 0, pointerEvents: 'none',
+        backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E")`,
+        opacity: 0.4,
       }} />
 
-      {/* Leaf/grain decorative element */}
+      {/* Thin grid lines */}
       <div style={{
-        width: 72, height: 72,
-        borderRadius: '50%',
-        background: 'rgba(255,255,255,0.07)',
-        border: '1.5px solid rgba(255,255,255,0.15)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        marginBottom: 28,
-        opacity: visible ? 1 : 0,
-        transform: visible ? 'scale(1)' : 'scale(0.7)',
-        transition: 'opacity 0.7s ease, transform 0.7s cubic-bezier(0.34, 1.56, 0.64, 1)',
-        transitionDelay: '0.05s',
-        boxShadow: '0 0 40px rgba(46,168,84,0.25)',
-      }}>
-        <span style={{ fontSize: '32px' }}>🌿</span>
-      </div>
+        position: 'absolute', inset: 0, pointerEvents: 'none',
+        backgroundImage: 'linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px)',
+        backgroundSize: '40px 40px',
+      }} />
 
-      {/* Company name */}
+      {/* Main content */}
       <div style={{
+        display: 'flex', flexDirection: 'column', alignItems: 'center',
         opacity: visible ? 1 : 0,
-        transform: visible ? 'translateY(0)' : 'translateY(24px)',
-        transition: 'opacity 0.7s ease, transform 0.7s ease',
-        transitionDelay: '0.12s',
-        textAlign: 'center',
-        padding: '0 32px',
+        transform: visible ? 'translateY(0)' : 'translateY(28px)',
+        transition: 'opacity 0.8s ease 0.15s, transform 0.8s cubic-bezier(0.22, 1, 0.36, 1) 0.15s',
+        zIndex: 1, textAlign: 'center', padding: '0 32px',
       }}>
+        {/* Shimmer tag */}
         <div style={{
-          fontSize: '11px',
-          color: 'rgba(255,255,255,0.45)',
-          letterSpacing: '0.22em',
+          fontSize: '9px', letterSpacing: '0.28em', fontWeight: 600,
+          color: 'rgba(255,255,255,0.35)', marginBottom: 20,
           textTransform: 'uppercase',
-          marginBottom: 10,
-          fontWeight: 500,
         }}>
           Trading Operations
         </div>
+
+        {/* Main holographic title */}
         <h1 style={{
-          margin: 0,
-          color: '#ffffff',
-          fontSize: '28px',
-          fontWeight: 800,
-          letterSpacing: '-0.01em',
-          lineHeight: 1.2,
-          textShadow: '0 2px 20px rgba(0,0,0,0.3)',
+          margin: 0, padding: 0,
+          fontSize: '36px', fontWeight: 900,
+          lineHeight: 1.15, letterSpacing: '-0.02em',
+          background: 'linear-gradient(90deg, #ff9eb5, #c084fc, #60a5fa, #34d399, #fbbf24, #f87171, #c084fc, #60a5fa, #ff9eb5)',
+          backgroundSize: '300% 100%',
+          WebkitBackgroundClip: 'text',
+          WebkitTextFillColor: 'transparent',
+          backgroundClip: 'text',
+          animation: 'holo-drift 5s linear infinite',
         }}>
           Agro Muda<br />Anugerah
         </h1>
-      </div>
 
-      {/* Version + divider */}
-      <div style={{
-        opacity: visible ? 1 : 0,
-        transform: visible ? 'translateY(0)' : 'translateY(16px)',
-        transition: 'opacity 0.6s ease, transform 0.6s ease',
-        transitionDelay: '0.3s',
-        marginTop: 28,
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        gap: 8,
-      }}>
+        {/* Version pill */}
         <div style={{
-          background: 'rgba(255,255,255,0.12)',
-          borderRadius: '20px',
-          padding: '4px 14px',
-          border: '1px solid rgba(255,255,255,0.18)',
+          marginTop: 18,
+          display: 'inline-flex', alignItems: 'center',
+          background: 'rgba(255,255,255,0.05)',
+          border: '1px solid rgba(255,255,255,0.1)',
+          borderRadius: '20px', padding: '4px 14px',
+          backdropFilter: 'blur(8px)',
         }}>
-          <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.7)', fontWeight: 600, letterSpacing: '0.06em' }}>
+          <span style={{
+            fontSize: '11px', fontWeight: 600, letterSpacing: '0.1em',
+            background: 'linear-gradient(90deg, #c084fc, #60a5fa)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            backgroundClip: 'text',
+          }}>
             v1.0.0
           </span>
         </div>
       </div>
 
-      {/* Loading dots */}
+      {/* Tap to continue */}
       <div style={{
-        position: 'absolute',
-        bottom: 80,
-        display: 'flex',
-        gap: 6,
+        position: 'absolute', bottom: 52,
+        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
         opacity: visible ? 1 : 0,
-        transition: 'opacity 0.5s ease',
-        transitionDelay: '0.5s',
+        transition: 'opacity 0.6s ease 0.7s',
+        zIndex: 1,
       }}>
-        {[0, 1, 2].map(i => (
-          <div key={i} style={{
-            width: 5, height: 5, borderRadius: '50%',
-            background: 'rgba(255,255,255,0.5)',
-            animation: 'dot-pulse 1.4s ease-in-out infinite',
-            animationDelay: `${i * 0.2}s`,
-          }} />
-        ))}
+        {/* Animated chevrons */}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, marginBottom: 4 }}>
+          {[0, 1].map(i => (
+            <div key={i} style={{
+              width: 8, height: 8,
+              borderRight: '1.5px solid rgba(255,255,255,0.25)',
+              borderBottom: '1.5px solid rgba(255,255,255,0.25)',
+              transform: 'rotate(45deg)',
+              animation: 'chevron-bob 1.8s ease-in-out infinite',
+              animationDelay: `${i * 0.15}s`,
+            }} />
+          ))}
+        </div>
+        <span style={{
+          fontSize: '11px', letterSpacing: '0.18em', fontWeight: 500,
+          color: 'rgba(255,255,255,0.3)',
+          animation: 'hint-pulse 2.5s ease-in-out infinite',
+        }}>
+          TAP TO CONTINUE
+        </span>
       </div>
 
       {/* Copyright */}
       <div style={{
-        position: 'absolute',
-        bottom: 32,
-        textAlign: 'center',
-        opacity: visible ? 0.35 : 0,
-        transition: 'opacity 0.5s ease',
-        transitionDelay: '0.6s',
+        position: 'absolute', bottom: 14, zIndex: 1,
+        opacity: visible ? 0.2 : 0,
+        transition: 'opacity 0.6s ease 0.9s',
       }}>
-        <p style={{ margin: 0, fontSize: '10px', color: '#fff', letterSpacing: '0.04em' }}>
+        <span style={{ fontSize: '9px', color: '#fff', letterSpacing: '0.04em' }}>
           © 2026 CV. Agro Muda Anugerah. All rights reserved.
-        </p>
+        </span>
       </div>
 
       <style>{`
-        @keyframes dot-pulse {
-          0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
-          40% { opacity: 1; transform: scale(1.1); }
+        @keyframes holo-drift {
+          0%   { background-position: 0%   50%; }
+          100% { background-position: 300% 50%; }
+        }
+        @keyframes hint-pulse {
+          0%, 100% { opacity: 0.25; }
+          50%       { opacity: 0.75; }
+        }
+        @keyframes chevron-bob {
+          0%, 100% { transform: rotate(45deg) translateY(0); opacity: 0.2; }
+          50%       { transform: rotate(45deg) translateY(3px); opacity: 0.7; }
         }
       `}</style>
     </div>
