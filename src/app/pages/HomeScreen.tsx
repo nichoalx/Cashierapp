@@ -46,6 +46,7 @@ function MemberPickerModal({ members, onSelect, onClose }: {
           display: 'flex', flexDirection: 'column',
           boxShadow: '0 -8px 30px rgba(0,0,0,0.15)',
           overflow: 'hidden',
+          animation: 'sheet-slide-up 250ms cubic-bezier(0.16, 1, 0.3, 1) both',
         }}
       >
         <div style={{ padding: '16px 16px 10px', borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
@@ -269,14 +270,14 @@ export default function HomeScreen() {
             <span style={{ fontSize: '11px', color: '#c0c4d0' }}>Pilih produk & masukkan jumlah</span>
           </div>
         ) : completedFlash ? (
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, animation: 'flash-in 200ms cubic-bezier(0.16, 1, 0.3, 1) both' }}>
             <span style={{ fontSize: '18px' }}>✓</span>
             <span style={{ fontSize: '13px', fontWeight: 700, color: '#52b96a' }}>Transaksi Berhasil!</span>
           </div>
         ) : (
           <>
             {items.map(item => (
-              <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 5 }}>
+              <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 5, animation: 'cart-item-in 160ms cubic-bezier(0.16, 1, 0.3, 1) both' }}>
                 <div style={{ width: 6, height: 6, borderRadius: '50%', background: item.color, flexShrink: 0 }} />
                 <span style={{ fontSize: '11px', fontWeight: 600, color: '#2d3142', flex: 1 }}>
                   {item.productShortName}{item.plasticSize ? ` ${item.plasticSize}` : ''}
@@ -347,8 +348,8 @@ export default function HomeScreen() {
           </div>
           {/* Number display */}
           <div style={{
-            fontFamily: "'Courier New', 'Courier', monospace",
-            fontSize: '34px', fontWeight: 700, color: '#dde2f0',
+            fontFamily: 'var(--font-mono)',
+            fontSize: '34px', fontWeight: 500, color: '#dde2f0',
             textAlign: 'right', letterSpacing: '0.06em', lineHeight: 1,
             display: 'flex', alignItems: 'baseline', justifyContent: 'flex-end', gap: 1,
           }}>
@@ -407,7 +408,7 @@ export default function HomeScreen() {
 
         {/* Plastic size grid */}
         {step.type === 'plastic_size' && (
-          <div style={{ background: '#eef0f5', boxShadow: '5px 5px 12px #c8cad1, -5px -5px 12px #ffffff', borderRadius: '14px', padding: '10px' }}>
+          <div style={{ background: '#eef0f5', boxShadow: '5px 5px 12px #c8cad1, -5px -5px 12px #ffffff', borderRadius: '14px', padding: '10px', animation: 'panel-in 180ms cubic-bezier(0.16, 1, 0.3, 1) both' }}>
             <div style={{ fontSize: '8px', color: '#b8bbd0', letterSpacing: '0.06em', marginBottom: 7 }}>UKURAN PLASTIK</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
               {plasticSizes.map(ps => (
@@ -438,7 +439,7 @@ export default function HomeScreen() {
               </span>
             </button>
             {showRemarks && (
-              <div style={{ padding: '0 10px 9px' }}>
+              <div style={{ padding: '0 10px 9px', animation: 'textarea-in 180ms cubic-bezier(0.16, 1, 0.3, 1) both' }}>
                 <textarea
                   placeholder="Catatan khusus..."
                   value={remarks}
@@ -502,6 +503,33 @@ export default function HomeScreen() {
         @keyframes cursor-blink {
           0%, 100% { opacity: 1; }
           50% { opacity: 0; }
+        }
+        @keyframes cart-item-in {
+          from { opacity: 0; transform: translateY(5px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes flash-in {
+          from { opacity: 0; transform: scale(0.97); }
+          to   { opacity: 1; transform: scale(1); }
+        }
+        @keyframes panel-in {
+          from { opacity: 0; transform: translateY(-4px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes textarea-in {
+          from { opacity: 0; transform: translateY(-3px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes sheet-slide-up {
+          from { transform: translateY(100%); }
+          to   { transform: translateY(0); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          *, *::before, *::after {
+            animation-duration: 0.01ms !important;
+            animation-iteration-count: 1 !important;
+            transition-duration: 0.01ms !important;
+          }
         }
       `}</style>
     </div>

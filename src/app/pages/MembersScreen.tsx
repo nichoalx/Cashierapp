@@ -1,17 +1,18 @@
 import React, { useState, useMemo } from 'react';
 import { useAppStore } from '../store';
-import { Search, UserPlus, Trash2, Phone, User, X } from 'lucide-react';
+import { Search, UserPlus, Trash2, Phone, User, X, Users } from 'lucide-react';
 
-const neuCard: React.CSSProperties = {
-  background: '#eef0f5',
-  boxShadow: '3px 3px 8px #caccd4, -2px -2px 6px rgba(255,255,255,0.75)',
-  borderRadius: '14px',
-};
+const SHD_RAISED_STD    = '4px 4px 9px #c8cad1, -4px -4px 9px #ffffff';
+const SHD_RAISED_LIST   = '3px 3px 7px #c8cad1, -3px -3px 7px rgba(255,255,255,0.92)';
+const SHD_RAISED_STRONG = '5px 5px 12px #c8cad1, -5px -5px 12px #ffffff';
+const SHD_RECESSED_STD  = 'inset 3px 3px 7px #c8cad1, inset -3px -3px 7px #ffffff';
+const SHD_ACTION_RAISED = '4px 4px 10px rgba(0,0,0,0.16), -3px -3px 8px rgba(255,255,255,0.5)';
+const SHD_ACTION_PRESS  = 'inset 3px 3px 8px rgba(0,0,0,0.22), inset -2px -2px 5px rgba(255,255,255,0.15)';
 
 const neuInput: React.CSSProperties = {
   background: '#eef0f5',
-  boxShadow: 'inset 3px 3px 7px #c8cad1, inset -3px -3px 7px #ffffff',
-  borderRadius: '11px',
+  boxShadow: SHD_RECESSED_STD,
+  borderRadius: '12px',
   border: 'none',
   outline: 'none',
   padding: '11px 14px',
@@ -48,6 +49,7 @@ export default function MembersScreen() {
   const [newPhone, setNewPhone] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [nameError, setNameError] = useState('');
+  const [savePressed, setSavePressed] = useState(false);
 
   const filtered = useMemo(() => {
     if (!search.trim()) return members;
@@ -57,6 +59,8 @@ export default function MembersScreen() {
       m.phone.includes(q)
     );
   }, [members, search]);
+
+  const saveDisabled = !newName.trim();
 
   const handleAdd = () => {
     setNameError('');
@@ -72,26 +76,35 @@ export default function MembersScreen() {
     setDeleteConfirm(null);
   };
 
+  const handleBatal = () => {
+    setShowAdd(false);
+    setNameError('');
+    setNewName('');
+    setNewPhone('');
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !saveDisabled) handleAdd();
+  };
+
   return (
     <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: '16px 16px 8px', gap: 12 }}>
 
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
         <div>
-          <div style={{ fontSize: '10px', color: '#9a9db5', letterSpacing: '0.08em' }}>DIREKTORI</div>
-          <h2 style={{ margin: '2px 0 0', color: '#2d3142' }}>Anggota</h2>
+          <div style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5', letterSpacing: '0.08em', textTransform: 'uppercase' }}>DIREKTORI</div>
+          <h2 style={{ margin: '3px 0 0', fontSize: '20px', fontWeight: 700, lineHeight: 1.3, color: '#2d3142' }}>Anggota</h2>
         </div>
         <button
-          onClick={() => { setShowAdd(s => !s); setNameError(''); }}
+          onClick={showAdd ? handleBatal : () => setShowAdd(true)}
           style={{
-            height: 36, padding: '0 12px', borderRadius: '10px', border: 'none', cursor: 'pointer',
+            height: 36, padding: '0 14px', borderRadius: '10px', border: 'none', cursor: 'pointer',
             background: '#eef0f5',
-            boxShadow: showAdd
-              ? 'inset 2px 2px 5px #c8cad1, inset -2px -2px 5px #ffffff'
-              : '3px 3px 8px #caccd4, -2px -2px 6px rgba(255,255,255,0.75)',
+            boxShadow: showAdd ? SHD_RECESSED_STD : SHD_RAISED_STD,
             display: 'flex', alignItems: 'center', gap: 6,
             color: '#4a90d9', fontSize: '12px', fontWeight: 700,
-            transition: 'all 0.15s',
+            transition: 'box-shadow 0.15s',
           }}
         >
           {showAdd ? <X size={14} /> : <UserPlus size={14} />}
@@ -101,41 +114,60 @@ export default function MembersScreen() {
 
       {/* Add form */}
       {showAdd && (
-        <div style={{ ...neuCard, padding: '14px' }}>
-          <div style={{ fontSize: '9px', color: '#9a9db5', letterSpacing: '0.1em', fontWeight: 600, marginBottom: 12 }}>ANGGOTA BARU</div>
+        <div style={{
+          background: '#eef0f5',
+          boxShadow: SHD_RAISED_STRONG,
+          borderRadius: '16px',
+          padding: '16px',
+        }}>
+          <div style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5', letterSpacing: '0.10em', textTransform: 'uppercase', marginBottom: 14 }}>ANGGOTA BARU</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div>
               <div style={{ position: 'relative' }}>
-                <User size={14} color="#9a9db5" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+                <User size={14} color="#9a9db5" style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
                 <input
                   type="text"
                   placeholder="Nama lengkap"
                   value={newName}
                   onChange={e => { setNewName(e.target.value); setNameError(''); }}
-                  style={{ ...neuInput, paddingLeft: 36 }}
+                  onKeyDown={handleKeyDown}
+                  style={{ ...neuInput, paddingLeft: 38 }}
                   autoFocus
                 />
               </div>
-              {nameError && <div style={{ fontSize: '11px', color: '#e05a6a', marginTop: 4 }}>{nameError}</div>}
+              {nameError && (
+                <div style={{ fontSize: '11px', color: '#d4183d', marginTop: 5, paddingLeft: 2 }}>{nameError}</div>
+              )}
             </div>
             <div style={{ position: 'relative' }}>
-              <Phone size={14} color="#9a9db5" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+              <Phone size={14} color="#9a9db5" style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
               <input
                 type="tel"
                 placeholder="Nomor HP (opsional)"
                 value={newPhone}
                 onChange={e => setNewPhone(e.target.value)}
-                style={{ ...neuInput, paddingLeft: 36 }}
+                onKeyDown={handleKeyDown}
+                style={{ ...neuInput, paddingLeft: 38 }}
               />
             </div>
             <button
               onClick={handleAdd}
+              disabled={saveDisabled}
+              onPointerDown={() => setSavePressed(true)}
+              onPointerUp={() => setSavePressed(false)}
+              onPointerLeave={() => setSavePressed(false)}
               style={{
-                height: 46, borderRadius: '12px', border: 'none', cursor: 'pointer',
-                background: 'linear-gradient(135deg, #4a90d9, #2563eb)',
-                color: '#fff', fontWeight: 700, fontSize: '13px',
-                boxShadow: '3px 3px 10px rgba(74,144,217,0.4)',
+                height: 46, borderRadius: '14px', border: 'none',
+                cursor: saveDisabled ? 'default' : 'pointer',
+                background: saveDisabled ? '#a8acbe' : '#4a90d9',
+                opacity: saveDisabled ? 0.5 : 1,
+                color: '#ffffff', fontWeight: 700, fontSize: '13px',
+                boxShadow: saveDisabled
+                  ? 'none'
+                  : savePressed ? SHD_ACTION_PRESS : SHD_ACTION_RAISED,
+                transform: savePressed && !saveDisabled ? 'scale(0.97)' : 'scale(1)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+                transition: 'box-shadow 0.07s, transform 0.07s, opacity 0.15s',
               }}
             >
               <UserPlus size={15} /> Simpan Anggota
@@ -146,36 +178,57 @@ export default function MembersScreen() {
 
       {/* Search */}
       <div style={{ position: 'relative' }}>
-        <Search size={14} color="#9a9db5" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+        <Search size={14} color="#9a9db5" style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
         <input
           type="text"
           placeholder="Cari nama atau nomor HP..."
           value={search}
           onChange={e => setSearch(e.target.value)}
-          style={{ ...neuInput, paddingLeft: 36, paddingRight: search ? 36 : 14, fontSize: '13px' }}
+          style={{ ...neuInput, paddingLeft: 38, paddingRight: search ? 36 : 14 }}
         />
         {search && (
-          <button onClick={() => setSearch('')} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 'none', cursor: 'pointer', padding: 2 }}>
+          <button
+            onClick={() => setSearch('')}
+            style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 'none', cursor: 'pointer', padding: 4 }}
+          >
             <X size={13} color="#9a9db5" />
           </button>
         )}
       </div>
 
       {/* Count */}
-      <div style={{ fontSize: '11px', color: '#b0b4c8' }}>
-        {filtered.length} dari {members.length} anggota
+      <div style={{ fontSize: '11px', color: '#9a9db5' }}>
+        {search.trim()
+          ? `${filtered.length} dari ${members.length} anggota`
+          : `${members.length} anggota`}
       </div>
 
       {/* Member list */}
-      <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{
+        flex: 1,
+        overflow: 'auto',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 12,
+        margin: '0 -8px',
+        padding: '4px 8px 14px',
+      }}>
         {filtered.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '40px 20px' }}>
-            <div style={{ fontSize: '32px', marginBottom: 10 }}>{search ? '🔍' : '👥'}</div>
-            <div style={{ fontSize: '13px', color: '#9a9db5' }}>
+            <div style={{
+              width: 52, height: 52, borderRadius: '14px',
+              background: '#eef0f5',
+              boxShadow: SHD_RAISED_STD,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              margin: '0 auto 14px',
+            }}>
+              {search ? <Search size={22} color="#c0c4d0" /> : <Users size={22} color="#c0c4d0" />}
+            </div>
+            <div style={{ fontSize: '13px', fontWeight: 600, color: '#9a9db5' }}>
               {search ? 'Tidak ditemukan' : 'Belum ada anggota'}
             </div>
             {!search && (
-              <div style={{ fontSize: '11px', color: '#c0c4d0', marginTop: 4 }}>
+              <div style={{ fontSize: '11px', color: '#c0c4d0', marginTop: 5 }}>
                 Klik "Tambah" untuk menambahkan anggota pertama
               </div>
             )}
@@ -185,21 +238,30 @@ export default function MembersScreen() {
             const color = getAvatarColor(m.id);
             const confirming = deleteConfirm === m.id;
             return (
-              <div key={m.id} style={{ ...neuCard, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div
+                key={m.id}
+                style={{
+                  background: '#eef0f5',
+                  boxShadow: SHD_RAISED_LIST,
+                  borderRadius: '14px',
+                  padding: '12px 14px',
+                  display: 'flex', alignItems: 'center', gap: 12,
+                }}
+              >
                 {/* Avatar */}
                 <div style={{
-                  width: 44, height: 44, borderRadius: '13px', flexShrink: 0,
-                  background: `${color}18`,
-                  border: `1.5px solid ${color}33`,
+                  width: 42, height: 42, borderRadius: '12px', flexShrink: 0,
+                  background: `${color}1e`,
+                  boxShadow: '3px 3px 7px #c8cad1, -3px -3px 7px #ffffff',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}>
-                  <span style={{ fontSize: '14px', fontWeight: 800, color }}>{initials(m.name)}</span>
+                  <span style={{ fontSize: '13px', fontWeight: 800, color, lineHeight: 1 }}>{initials(m.name)}</span>
                 </div>
 
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: '14px', fontWeight: 700, color: '#2d3142', marginBottom: 2 }}>{m.name}</div>
+                  <div style={{ fontSize: '14px', fontWeight: 700, color: '#2d3142', marginBottom: 3 }}>{m.name}</div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                    <Phone size={10} color="#b0b4c8" />
+                    <Phone size={10} color="#c0c4d0" />
                     <span style={{ fontSize: '11px', color: '#9a9db5' }}>
                       {m.phone ? formatPhone(m.phone) : '—'}
                     </span>
@@ -210,27 +272,38 @@ export default function MembersScreen() {
                 {confirming ? (
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                     <span style={{ fontSize: '11px', color: '#9a9db5' }}>Hapus?</span>
-                    <button onClick={() => handleDelete(m.id)} style={{
-                      width: 30, height: 30, borderRadius: '8px', border: 'none', cursor: 'pointer',
-                      background: '#e05a6a', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    }}>
-                      <Trash2 size={12} color="#fff" />
+                    <button
+                      onClick={() => handleDelete(m.id)}
+                      style={{
+                        width: 32, height: 32, borderRadius: '9px', border: 'none', cursor: 'pointer',
+                        background: '#d4183d',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}
+                    >
+                      <Trash2 size={13} color="#ffffff" />
                     </button>
-                    <button onClick={() => setDeleteConfirm(null)} style={{
-                      width: 30, height: 30, borderRadius: '8px', border: 'none', cursor: 'pointer',
-                      background: '#eef0f5', boxShadow: '2px 2px 5px #c8cad1, -2px -2px 5px #ffffff',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    }}>
-                      <X size={12} color="#9a9db5" />
+                    <button
+                      onClick={() => setDeleteConfirm(null)}
+                      style={{
+                        width: 32, height: 32, borderRadius: '9px', border: 'none', cursor: 'pointer',
+                        background: '#eef0f5',
+                        boxShadow: SHD_RAISED_STD,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}
+                    >
+                      <X size={13} color="#9a9db5" />
                     </button>
                   </div>
                 ) : (
-                  <button onClick={() => setDeleteConfirm(m.id)} style={{
-                    width: 32, height: 32, borderRadius: '9px', border: 'none', cursor: 'pointer',
-                    background: '#eef0f5',
-                    boxShadow: '2px 2px 5px #c8cad1, -2px -2px 5px rgba(255,255,255,0.8)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  }}>
+                  <button
+                    onClick={() => setDeleteConfirm(m.id)}
+                    style={{
+                      width: 32, height: 32, borderRadius: '9px', border: 'none', cursor: 'pointer',
+                      background: '#eef0f5',
+                      boxShadow: SHD_RAISED_STD,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}
+                  >
                     <Trash2 size={13} color="#c0c4d0" />
                   </button>
                 )}

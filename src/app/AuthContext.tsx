@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
 
 export interface AuthUser {
   id: string;
@@ -10,24 +10,25 @@ export interface AuthUser {
 
 interface AuthContextType {
   user: AuthUser | null;
-  pendingOtp: string | null;
   pendingEmail: string | null;
-  login: (email: string, password: string) => { success: boolean; error?: string };
-  verifyOtp: (otp: string) => boolean;
+  pendingOtp: string | null;
+  requestOtp: (email: string) => { success: boolean; error?: string };
+  verifyOtp: (code: string) => boolean;
   logout: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-// Hardcoded accounts — add new ones here
-const ACCOUNTS: { email: string; password: string; name: string; role: string; id: string }[] = [
-  { id: 'u1', email: 'admin@agromuda.com', password: 'Admin2026', name: 'Administrator', role: 'Admin' },
-  { id: 'u2', email: 'operator@agromuda.com', password: 'Ops2026', name: 'Operator', role: 'Operator' },
-  { id: 'u3', email: 'manager@agromuda.com', password: 'Mgr2026', name: 'Manager', role: 'Manager' },
-];
+// Single placeholder user — swap for Convex auth later
+const PLACEHOLDER = {
+  id: 'u1',
+  email: 'admin@agromuda.com',
+  name: 'Administrator',
+  role: 'Admin',
+};
 
 function generateOtp(): string {
-  return String(Math.floor(10000000 + Math.random() * 90000000));
+  return String(Math.floor(100000 + Math.random() * 900000)); // 6 digits
 }
 
 function loadUser(): AuthUser | null {
@@ -44,27 +45,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [pendingOtp, setPendingOtp] = useState<string | null>(null);
   const [pendingEmail, setPendingEmail] = useState<string | null>(null);
 
-  const login = useCallback((email: string, password: string): { success: boolean; error?: string } => {
-    const account = ACCOUNTS.find(a => a.email.toLowerCase() === email.toLowerCase() && a.password === password);
-    if (!account) return { success: false, error: 'Email atau password salah.' };
+  const requestOtp = useCallback((email: string): { success: boolean; error?: string } => {
+    if (email.toLowerCase() !== PLACEHOLDER.email.toLowerCase()) {
+      return { success: false, error: 'Email tidak terdaftar.' };
+    }
     const otp = generateOtp();
     setPendingOtp(otp);
     setPendingEmail(email);
-    // In production: send email here
-    console.log(`[DEV] OTP for ${email}: ${otp}`);
+    console.log(`%c[OTP] ${otp}`, 'font-size:20px;font-weight:bold;color:#4a90d9;');
     return { success: true };
   }, []);
 
-  const verifyOtp = useCallback((otp: string): boolean => {
+  const verifyOtp = useCallback((code: string): boolean => {
     if (!pendingOtp || !pendingEmail) return false;
-    if (otp !== pendingOtp) return false;
-    const account = ACCOUNTS.find(a => a.email.toLowerCase() === pendingEmail.toLowerCase());
-    if (!account) return false;
+    if (code !== pendingOtp) return false;
     const authUser: AuthUser = {
-      id: account.id,
-      email: account.email,
-      name: account.name,
-      role: account.role,
+      id: PLACEHOLDER.id,
+      email: PLACEHOLDER.email,
+      name: PLACEHOLDER.name,
+      role: PLACEHOLDER.role,
       lastLogin: new Date(),
     };
     setUser(authUser);
@@ -82,7 +81,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, pendingOtp, pendingEmail, login, verifyOtp, logout }}>
+    <AuthContext.Provider value={{ user, pendingEmail, pendingOtp, requestOtp, verifyOtp, logout }}>
       {children}
     </AuthContext.Provider>
   );

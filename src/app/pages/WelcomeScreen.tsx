@@ -1,13 +1,16 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../AuthContext';
 
-const ORBS = [
-  { w: 220, h: 220, top: '-60px', left: '-60px',  color: '#c084fc', delay: '0s' },
-  { w: 180, h: 180, top: '30%',   right: '-50px',  color: '#38bdf8', delay: '1.2s' },
-  { w: 140, h: 140, bottom: '15%',left: '10%',     color: '#f472b6', delay: '0.6s' },
-  { w: 100, h: 100, bottom: '-30px', right: '20%', color: '#4ade80', delay: '2s' },
-  { w: 80,  h: 80,  top: '55%',   left: '5%',      color: '#fbbf24', delay: '1.8s' },
+// Commodity palette — connects the splash to the product's data vocabulary
+const ORBS: Array<{
+  w: number; h: number; color: string;
+  top?: string; bottom?: string; left?: string; right?: string;
+}> = [
+  { w: 340, h: 340, top: '-110px',  left: '-90px',  color: '#9b6dff' },
+  { w: 280, h: 280, top: '-60px',   right: '-80px', color: '#4a90d9' },
+  { w: 220, h: 220, bottom: '8%',   right: '-50px', color: '#e05a6a' },
+  { w: 200, h: 200, bottom: '-60px',left: '0%',     color: '#38b2ac' },
 ];
 
 export default function WelcomeScreen() {
@@ -17,14 +20,14 @@ export default function WelcomeScreen() {
   const [exiting, setExiting] = useState(false);
 
   useEffect(() => {
-    const t = setTimeout(() => setVisible(true), 80);
+    const t = setTimeout(() => setVisible(true), 60);
     return () => clearTimeout(t);
   }, []);
 
   const handleTap = () => {
     if (exiting) return;
     setExiting(true);
-    setTimeout(() => navigate(user ? '/' : '/login', { replace: true }), 500);
+    setTimeout(() => navigate(user ? '/' : '/login', { replace: true }), 380);
   };
 
   return (
@@ -32,93 +35,73 @@ export default function WelcomeScreen() {
       onClick={handleTap}
       style={{
         width: '100%', height: '100%',
-        background: '#07080f',
+        background: '#f7f8fb',
         display: 'flex', flexDirection: 'column',
         alignItems: 'center', justifyContent: 'center',
         position: 'relative', overflow: 'hidden',
         cursor: 'pointer',
         opacity: exiting ? 0 : 1,
-        transition: 'opacity 0.45s ease',
+        transition: 'opacity 0.38s ease',
       }}
     >
-      {/* Ambient blobs */}
+      {/* Static orbs */}
       {ORBS.map((o, i) => (
         <div key={i} style={{
           position: 'absolute',
           width: o.w, height: o.h,
           borderRadius: '50%',
           background: o.color,
-          filter: 'blur(55px)',
-          opacity: visible ? 0.22 : 0,
-          transition: `opacity 1.2s ease ${o.delay}`,
-          ...(o.top    ? { top: o.top }       : {}),
-          ...(o.bottom ? { bottom: o.bottom } : {}),
-          ...(o.left   ? { left: o.left }     : {}),
-          ...(o.right  ? { right: o.right }   : {}),
+          filter: 'blur(80px)',
+          opacity: 0.13,
+          top: o.top, bottom: o.bottom,
+          left: o.left, right: o.right,
+          pointerEvents: 'none',
         }} />
       ))}
-
-      {/* Grain texture overlay */}
-      <div style={{
-        position: 'absolute', inset: 0, pointerEvents: 'none',
-        backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E")`,
-        opacity: 0.4,
-      }} />
-
-      {/* Thin grid lines */}
-      <div style={{
-        position: 'absolute', inset: 0, pointerEvents: 'none',
-        backgroundImage: 'linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px)',
-        backgroundSize: '40px 40px',
-      }} />
 
       {/* Main content */}
       <div style={{
         display: 'flex', flexDirection: 'column', alignItems: 'center',
         opacity: visible ? 1 : 0,
-        transform: visible ? 'translateY(0)' : 'translateY(28px)',
-        transition: 'opacity 0.8s ease 0.15s, transform 0.8s cubic-bezier(0.22, 1, 0.36, 1) 0.15s',
-        zIndex: 1, textAlign: 'center', padding: '0 32px',
+        transition: 'opacity 0.5s ease 0.08s',
+        zIndex: 1, textAlign: 'center', padding: '0 40px',
       }}>
-        {/* Shimmer tag */}
+        {/* Subtitle */}
         <div style={{
-          fontSize: '9px', letterSpacing: '0.28em', fontWeight: 600,
-          color: 'rgba(255,255,255,0.35)', marginBottom: 20,
+          fontFamily: 'var(--font-ui)',
+          fontSize: '9px', fontWeight: 500,
+          letterSpacing: '0.22em',
+          color: '#2d3142', opacity: 0.38,
           textTransform: 'uppercase',
+          marginBottom: 14,
         }}>
           Trading Operations
         </div>
 
-        {/* Main holographic title */}
+        {/* Title */}
         <h1 style={{
           margin: 0, padding: 0,
-          fontSize: '36px', fontWeight: 900,
-          lineHeight: 1.15, letterSpacing: '-0.02em',
-          background: 'linear-gradient(90deg, #ff9eb5, #c084fc, #60a5fa, #34d399, #fbbf24, #f87171, #c084fc, #60a5fa, #ff9eb5)',
-          backgroundSize: '300% 100%',
-          WebkitBackgroundClip: 'text',
-          WebkitTextFillColor: 'transparent',
-          backgroundClip: 'text',
-          animation: 'holo-drift 5s linear infinite',
+          fontFamily: 'var(--font-display)',
+          fontSize: '22px', fontWeight: 300,
+          lineHeight: 1.5, letterSpacing: '0.04em',
+          color: '#2d3142',
         }}>
-          Agro Muda<br />Anugerah
+          Agro Muda Anugerah
         </h1>
 
         {/* Version pill */}
         <div style={{
-          marginTop: 18,
+          marginTop: 20,
           display: 'inline-flex', alignItems: 'center',
-          background: 'rgba(255,255,255,0.05)',
-          border: '1px solid rgba(255,255,255,0.1)',
-          borderRadius: '20px', padding: '4px 14px',
-          backdropFilter: 'blur(8px)',
+          background: 'rgba(255,255,255,0.6)',
+          border: '1px solid rgba(180,180,210,0.35)',
+          borderRadius: '20px', padding: '5px 14px',
         }}>
           <span style={{
-            fontSize: '11px', fontWeight: 600, letterSpacing: '0.1em',
-            background: 'linear-gradient(90deg, #c084fc, #60a5fa)',
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
-            backgroundClip: 'text',
+            fontFamily: 'var(--font-ui)',
+            fontSize: '10px', fontWeight: 500,
+            letterSpacing: '0.08em',
+            color: '#2d3142', opacity: 0.45,
           }}>
             v1.0.0
           </span>
@@ -127,29 +110,18 @@ export default function WelcomeScreen() {
 
       {/* Tap to continue */}
       <div style={{
-        position: 'absolute', bottom: 52,
-        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
+        position: 'absolute', bottom: 44,
+        display: 'flex', alignItems: 'center',
         opacity: visible ? 1 : 0,
-        transition: 'opacity 0.6s ease 0.7s',
+        transition: 'opacity 0.5s ease 0.5s',
         zIndex: 1,
       }}>
-        {/* Animated chevrons */}
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, marginBottom: 4 }}>
-          {[0, 1].map(i => (
-            <div key={i} style={{
-              width: 8, height: 8,
-              borderRight: '1.5px solid rgba(255,255,255,0.25)',
-              borderBottom: '1.5px solid rgba(255,255,255,0.25)',
-              transform: 'rotate(45deg)',
-              animation: 'chevron-bob 1.8s ease-in-out infinite',
-              animationDelay: `${i * 0.15}s`,
-            }} />
-          ))}
-        </div>
         <span style={{
-          fontSize: '11px', letterSpacing: '0.18em', fontWeight: 500,
-          color: 'rgba(255,255,255,0.3)',
-          animation: 'hint-pulse 2.5s ease-in-out infinite',
+          fontFamily: 'var(--font-ui)',
+          fontSize: '9px', letterSpacing: '0.22em', fontWeight: 500,
+          color: '#2d3142', opacity: 0.3,
+          textTransform: 'uppercase',
+          animation: 'hint-pulse 2.8s ease-in-out infinite',
         }}>
           TAP TO CONTINUE
         </span>
@@ -159,25 +131,21 @@ export default function WelcomeScreen() {
       <div style={{
         position: 'absolute', bottom: 14, zIndex: 1,
         opacity: visible ? 0.2 : 0,
-        transition: 'opacity 0.6s ease 0.9s',
+        transition: 'opacity 0.5s ease 0.7s',
+        pointerEvents: 'none',
       }}>
-        <span style={{ fontSize: '9px', color: '#fff', letterSpacing: '0.04em' }}>
-          © 2026 CV. Agro Muda Anugerah. All rights reserved.
+        <span style={{
+          fontFamily: 'var(--font-ui)',
+          fontSize: '9px', letterSpacing: '0.04em', color: '#2d3142',
+        }}>
+          © 2026 CV. Agro Muda Anugerah
         </span>
       </div>
 
       <style>{`
-        @keyframes holo-drift {
-          0%   { background-position: 0%   50%; }
-          100% { background-position: 300% 50%; }
-        }
         @keyframes hint-pulse {
-          0%, 100% { opacity: 0.25; }
-          50%       { opacity: 0.75; }
-        }
-        @keyframes chevron-bob {
-          0%, 100% { transform: rotate(45deg) translateY(0); opacity: 0.2; }
-          50%       { transform: rotate(45deg) translateY(3px); opacity: 0.7; }
+          0%, 100% { opacity: 0.3; }
+          50%       { opacity: 0.6; }
         }
       `}</style>
     </div>

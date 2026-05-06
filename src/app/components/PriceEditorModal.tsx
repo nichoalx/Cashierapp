@@ -6,15 +6,21 @@ interface Props {
   onClose: () => void;
 }
 
+const SHD_RAISED_STD    = '4px 4px 9px #c8cad1, -4px -4px 9px #ffffff';
+const SHD_RAISED_STRONG = '5px 5px 12px #c8cad1, -5px -5px 12px #ffffff';
+const SHD_RECESSED      = 'inset 3px 3px 7px #c8cad1, inset -3px -3px 7px #ffffff';
+const SHD_ACTION_RAISED = '4px 4px 10px rgba(0,0,0,0.16), -3px -3px 8px rgba(255,255,255,0.5)';
+const SHD_ACTION_PRESS  = 'inset 3px 3px 8px rgba(0,0,0,0.22), inset -2px -2px 5px rgba(255,255,255,0.15)';
+
 const neuCard: React.CSSProperties = {
   background: '#eef0f5',
-  boxShadow: '6px 6px 14px #c8cad1, -6px -6px 14px #ffffff',
+  boxShadow: SHD_RAISED_STRONG,
   borderRadius: '16px',
 };
 
 const neuInput: React.CSSProperties = {
   background: '#eef0f5',
-  boxShadow: 'inset 3px 3px 7px #c8cad1, inset -3px -3px 7px #ffffff',
+  boxShadow: SHD_RECESSED,
   borderRadius: '10px',
   border: 'none',
   outline: 'none',
@@ -53,13 +59,13 @@ export function PriceEditorModal({ onClose }: Props) {
         <div className="flex items-center justify-between px-5 pt-5 pb-3 shrink-0">
           <div>
             <div style={{ fontSize: '11px', color: '#9a9db5', letterSpacing: '0.08em' }}>EDITOR</div>
-            <h2 style={{ color: '#2d3142', margin: 0 }}>Daftar Harga</h2>
+            <h2 style={{ color: '#2d3142', margin: 0, fontSize: '20px', fontWeight: 700, lineHeight: 1.3 }}>Daftar Harga</h2>
           </div>
           <button
             onClick={onClose}
-            style={{ ...neuCard, boxShadow: '4px 4px 8px #c8cad1, -4px -4px 8px #ffffff', width: 36, height: 36, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', cursor: 'pointer' }}
+            style={{ background: '#eef0f5', boxShadow: SHD_RAISED_STD, width: 36, height: 36, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', cursor: 'pointer', transition: 'box-shadow 0.12s' }}
           >
-            <X size={16} color="#6b7280" />
+            <X size={16} color="#9a9db5" />
           </button>
         </div>
 
@@ -78,10 +84,8 @@ export function PriceEditorModal({ onClose }: Props) {
                 letterSpacing: '0.04em',
                 background: '#eef0f5',
                 color: activeTab === tab ? '#4a90d9' : '#9a9db5',
-                boxShadow: activeTab === tab
-                  ? 'inset 3px 3px 6px #c8cad1, inset -3px -3px 6px #ffffff'
-                  : '4px 4px 8px #c8cad1, -4px -4px 8px #ffffff',
-                transition: 'all 0.2s',
+                boxShadow: activeTab === tab ? SHD_RECESSED : SHD_RAISED_STD,
+                transition: 'all 0.15s',
                 border: 'none',
                 cursor: 'pointer',
               }}
@@ -124,7 +128,7 @@ export function PriceEditorModal({ onClose }: Props) {
               ))}
 
               {/* Add new soybean */}
-              <div style={{ ...neuCard, boxShadow: 'inset 3px 3px 6px #c8cad1, inset -3px -3px 6px #ffffff', padding: '12px', marginTop: 8 }}>
+              <div style={{ ...neuCard, boxShadow: SHD_RECESSED, padding: '12px', marginTop: 8 }}>
                 <div style={{ fontSize: '11px', color: '#9a9db5', marginBottom: 8, fontWeight: 600 }}>TAMBAH BARU</div>
                 <div className="flex flex-col gap-2">
                   <div className="flex gap-2">
@@ -142,10 +146,10 @@ export function PriceEditorModal({ onClose }: Props) {
                       }}
                       style={{
                         flex: 1, borderRadius: '10px', background: '#4a90d9',
-                        color: '#fff', border: 'none', fontWeight: 700, fontSize: '14px',
-                        boxShadow: '3px 3px 7px #3a7bbf, -2px -2px 5px rgba(255,255,255,0.6)',
+                        color: '#fff', border: 'none', fontWeight: 700, fontSize: '13px',
+                        boxShadow: SHD_ACTION_RAISED,
                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, cursor: 'pointer',
-                        padding: '8px 0',
+                        padding: '8px 0', transition: 'box-shadow 0.12s',
                       }}
                     >
                       <Plus size={14} /> Tambah
@@ -185,7 +189,7 @@ export function PriceEditorModal({ onClose }: Props) {
                 {/* Plastic size management */}
                 <div style={{
                   ...neuCard,
-                  boxShadow: 'inset 3px 3px 6px #c8cad1, inset -3px -3px 6px #ffffff',
+                  boxShadow: SHD_RECESSED,
                   padding: '10px', marginTop: 10,
                 }}>
                   <div style={{ fontSize: '10px', color: '#9a9db5', marginBottom: 8, fontWeight: 600 }}>UKURAN</div>
@@ -194,7 +198,7 @@ export function PriceEditorModal({ onClose }: Props) {
                       <div key={ps.id} style={{
                         display: 'flex', alignItems: 'center', gap: 4,
                         background: '#eef0f5',
-                        boxShadow: '2px 2px 5px #c8cad1, -2px -2px 5px #ffffff',
+                        boxShadow: SHD_RAISED_STD,
                         borderRadius: '8px', padding: '4px 8px',
                       }}>
                         <span style={{ fontSize: '11px', fontWeight: 600, color: '#38b2ac' }}>{ps.size}</span>
@@ -218,8 +222,9 @@ export function PriceEditorModal({ onClose }: Props) {
                       style={{
                         borderRadius: '10px', background: '#38b2ac', color: '#fff', border: 'none',
                         fontWeight: 700, padding: '0 14px',
-                        boxShadow: '3px 3px 7px #2a9891, -2px -2px 5px rgba(255,255,255,0.6)',
+                        boxShadow: SHD_ACTION_RAISED,
                         display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                        transition: 'box-shadow 0.12s',
                       }}
                     >
                       <Plus size={14} />

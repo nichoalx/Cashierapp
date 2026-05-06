@@ -9,6 +9,7 @@ import UserScreen from './pages/UserScreen';
 import MembersScreen from './pages/MembersScreen';
 import WelcomeScreen from './pages/WelcomeScreen';
 import LoginScreen from './pages/LoginScreen';
+import AppErrorScreen from './pages/AppErrorScreen';
 
 function ProtectedRoot() {
   const { user } = useAuth();
@@ -21,15 +22,16 @@ function ProtectedRoot() {
   );
 }
 
+const SPLASH_KEY = 'ama_splash_shown';
+
 function AppShell() {
-  const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
   useEffect(() => {
-    const splashShown = sessionStorage.getItem('ama_splash');
-    if (!user && !splashShown && location.pathname !== '/splash' && location.pathname !== '/login') {
-      sessionStorage.setItem('ama_splash', '1');
+    const alreadyShown = sessionStorage.getItem(SPLASH_KEY);
+    if (!alreadyShown && location.pathname !== '/splash') {
+      sessionStorage.setItem(SPLASH_KEY, '1');
       navigate('/splash', { replace: true });
     }
   }, []);
@@ -68,6 +70,7 @@ function RootRedirect() {
 export const router = createBrowserRouter([
   {
     Component: AppShell,
+    ErrorBoundary: AppErrorScreen,
     children: [
       { path: '/splash', Component: WelcomeScreen },
       { path: '/login', Component: LoginScreen },
@@ -79,7 +82,7 @@ export const router = createBrowserRouter([
           { path: 'log', Component: TransactionLogScreen },
           { path: 'stock', Component: StockScreen },
           { path: 'profile', Component: UserScreen },
-          { path: 'members', Component: MembersScreen },
+          { path: 'members', Component: MembersScreen }
         ],
       },
     ],
