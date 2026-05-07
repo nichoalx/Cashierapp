@@ -63,7 +63,7 @@ export default function WelcomeScreen() {
       <div style={{
         display: 'flex', flexDirection: 'column', alignItems: 'center',
         opacity: visible ? 1 : 0,
-        transition: 'opacity 0.5s ease 0.08s',
+        transition: 'opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.08s',
         zIndex: 1, textAlign: 'center', padding: '0 40px',
       }}>
         {/* Subtitle */}
@@ -113,7 +113,7 @@ export default function WelcomeScreen() {
         position: 'absolute', bottom: 44,
         display: 'flex', alignItems: 'center',
         opacity: visible ? 1 : 0,
-        transition: 'opacity 0.5s ease 0.5s',
+        transition: 'opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.5s',
         zIndex: 1,
       }}>
         <span style={{

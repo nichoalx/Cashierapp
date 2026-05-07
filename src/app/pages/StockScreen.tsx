@@ -322,7 +322,7 @@ function StockCard({ s, maxQty }: { s: ReturnType<typeof useAppStore>['stock'][0
           boxShadow: SHD_RECESSED,
           display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
         }}>
-          <span style={{ fontSize: '12px', fontWeight: 700, color: '#9a9db5' }}>{s.productName.slice(0, 2).toUpperCase()}</span>
+          <span style={{ fontSize: '12px', fontWeight: 700, color: s.color }}>{s.productName.slice(0, 2).toUpperCase()}</span>
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
@@ -410,23 +410,31 @@ export default function StockScreen() {
 
       {/* Stock alert */}
       {(criticalCount > 0 || lowCount > 0) && (
-        <div style={{
-          background: '#eef0f5', boxShadow: SHD_RAISED_STD,
-          borderRadius: '12px', padding: '10px 13px',
-          display: 'flex', alignItems: 'center', gap: 10,
-          animation: 'alert-in 180ms cubic-bezier(0.22, 1, 0.36, 1) both',
-        }}>
-          <div style={{
-            width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
-            background: criticalCount > 0 ? '#d4183d' : '#d4a017',
-            boxShadow: `0 0 6px ${criticalCount > 0 ? '#d4183d99' : '#d4a01799'}`,
-          }} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: '11px', fontWeight: 700, color: criticalCount > 0 ? '#d4183d' : '#9a7800' }}>
-              {criticalCount > 0 ? `${criticalCount} produk perlu restok segera` : `${lowCount} produk hampir habis`}
+        <div style={{ display: 'flex', gap: 7, animation: 'alert-in 180ms cubic-bezier(0.22, 1, 0.36, 1) both' }}>
+          {criticalCount > 0 && (
+            <div style={{
+              background: '#eef0f5',
+              boxShadow: 'inset 2px 2px 5px #c8cad1, inset -2px -2px 5px rgba(255,255,255,0.9)',
+              borderRadius: '999px', padding: '7px 13px',
+              display: 'flex', alignItems: 'center', gap: 6,
+            }}>
+              <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#d4183d', boxShadow: '0 0 5px #d4183d99', flexShrink: 0 }} />
+              <span style={{ fontSize: '13px', fontWeight: 800, color: '#d4183d', lineHeight: 1 }}>{criticalCount}</span>
+              <span style={{ fontSize: '9px', fontWeight: 700, color: '#c0c4d0', letterSpacing: '0.07em', textTransform: 'uppercase' }}>Kritis</span>
             </div>
-            <div style={{ fontSize: '9px', color: '#9a9db5', marginTop: 1 }}>Gunakan tombol Tambah Stok</div>
-          </div>
+          )}
+          {lowCount > 0 && (
+            <div style={{
+              background: '#eef0f5',
+              boxShadow: 'inset 2px 2px 5px #c8cad1, inset -2px -2px 5px rgba(255,255,255,0.9)',
+              borderRadius: '999px', padding: '7px 13px',
+              display: 'flex', alignItems: 'center', gap: 6,
+            }}>
+              <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#d4a017', boxShadow: '0 0 5px #d4a01799', flexShrink: 0 }} />
+              <span style={{ fontSize: '13px', fontWeight: 800, color: '#d4a017', lineHeight: 1 }}>{lowCount}</span>
+              <span style={{ fontSize: '9px', fontWeight: 700, color: '#c0c4d0', letterSpacing: '0.07em', textTransform: 'uppercase' }}>Rendah</span>
+            </div>
+          )}
         </div>
       )}
 

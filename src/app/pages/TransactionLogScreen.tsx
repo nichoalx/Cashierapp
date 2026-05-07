@@ -205,18 +205,27 @@ function EditModal({ transaction, onClose, onSave }: EditModalProps) {
   const newTotal   = items.reduce((s, i) => s + i.total, 0);
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center"
-      style={{ background: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(4px)' }}
-      onClick={onClose}
-    >
+    <>
+      <style>{`
+        @keyframes edit-sheet-up {
+          from { transform: translateY(100%); }
+          to   { transform: translateY(0); }
+        }
+      `}</style>
+      <div
+        className="fixed inset-0 z-50 flex items-end justify-center"
+        style={{ background: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(4px)' }}
+        onClick={onClose}
+      >
       <div
         onClick={e => e.stopPropagation()}
         style={{
-          background: '#eef0f5', boxShadow: SHD_RAISED_STRONG,
+          background: '#eef0f5',
+          boxShadow: '0 -8px 30px rgba(0,0,0,0.12)',
           borderRadius: '24px 24px 0 0',
-          width: '100%', maxWidth: 420, maxHeight: '80vh',
+          width: '100%', maxWidth: 430, maxHeight: '80vh',
           display: 'flex', flexDirection: 'column', overflow: 'hidden',
+          animation: 'edit-sheet-up 280ms cubic-bezier(0.16, 1, 0.3, 1) both',
         }}
       >
         <div style={{ padding: '20px 20px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -226,7 +235,7 @@ function EditModal({ transaction, onClose, onSave }: EditModalProps) {
           </div>
           <button onClick={onClose} style={{
             background: '#eef0f5', boxShadow: SHD_RAISED_STD,
-            border: 'none', borderRadius: '50%', width: 36, height: 36,
+            border: 'none', borderRadius: '11px', width: 36, height: 36,
             display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
           }}>
             <X size={16} color="#9a9db5" />
@@ -289,6 +298,7 @@ function EditModal({ transaction, onClose, onSave }: EditModalProps) {
         </div>
       </div>
     </div>
+    </>
   );
 }
 
@@ -348,12 +358,13 @@ export default function TransactionLogScreen() {
   const renderTxList = () => (
     <div style={{
       flex: 1,
+      minHeight: 0,
       overflow: 'auto',
       display: 'flex',
       flexDirection: 'column',
       gap: 12,
       margin: '0 -8px',
-      padding: '4px 8px 14px',
+      padding: '4px 8px 80px',
     }}>
       {filteredTxs.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '32px 20px' }}>
@@ -528,13 +539,21 @@ export default function TransactionLogScreen() {
         <div style={{ fontSize: '24px', fontWeight: 700, color: '#2d3142', lineHeight: 1.2 }}>
           {formatRupiah(searchQuery || filterType !== 'all' ? dayTotal : rawDayTotal)}
         </div>
-        <div style={{ display: 'flex', gap: 16, marginTop: 6 }}>
+        <div style={{ display: 'flex', gap: 20, marginTop: 6 }}>
           <div>
             <div style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5', letterSpacing: '0.06em', textTransform: 'uppercase' }}>Transaksi</div>
             <div style={{ fontSize: '15px', fontWeight: 700, color: '#4a90d9' }}>
               {filteredTxs.length}{filteredTxs.length !== dayTxs.length ? `/${dayTxs.length}` : ''}
             </div>
           </div>
+          {filteredTxs.length > 0 && (
+            <div>
+              <div style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5', letterSpacing: '0.06em', textTransform: 'uppercase' }}>Rata-rata</div>
+              <div style={{ fontSize: '15px', fontWeight: 700, color: '#2d3142' }}>
+                {formatRupiah(Math.round(dayTotal / filteredTxs.length))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

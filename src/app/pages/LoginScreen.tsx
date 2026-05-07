@@ -205,7 +205,15 @@ export default function LoginScreen() {
             <div style={{ marginBottom: 22 }}>
               <button
                 onClick={() => { setStep('email'); setOtp(['', '', '', '', '', '']); setOtpError(''); }}
-                style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '12px', color: '#9a9db5', padding: 0, marginBottom: 12 }}
+                style={{
+                  background: '#eef0f5',
+                  boxShadow: SHD_RAISED_STD,
+                  border: 'none', cursor: 'pointer',
+                  fontSize: '11px', fontWeight: 600, color: '#9a9db5',
+                  padding: '6px 12px 6px 10px', marginBottom: 14,
+                  borderRadius: '10px',
+                  display: 'inline-flex', alignItems: 'center', gap: 4,
+                }}
               >
                 ← Kembali
               </button>

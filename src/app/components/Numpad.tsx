@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Delete } from 'lucide-react';
+import { Delete, Plus, Check } from 'lucide-react';
 
 interface NumpadProps {
   value: string;
@@ -17,7 +17,6 @@ function NumKey({ label, onClick, style, children }: {
   children?: React.ReactNode;
 }) {
   const [pressed, setPressed] = useState(false);
-
   return (
     <button
       onPointerDown={() => setPressed(true)}
@@ -45,37 +44,39 @@ function NumKey({ label, onClick, style, children }: {
   );
 }
 
-function ActionKey({ label, onClick, color, style }: {
-  label: string;
+function ActionKey({ icon, onClick, color, disabled, style }: {
+  icon: React.ReactNode;
   onClick: () => void;
   color: string;
+  disabled?: boolean;
   style?: React.CSSProperties;
 }) {
   const [pressed, setPressed] = useState(false);
   return (
     <button
-      onPointerDown={() => setPressed(true)}
-      onPointerUp={() => { setPressed(false); onClick(); }}
+      onPointerDown={() => !disabled && setPressed(true)}
+      onPointerUp={() => { setPressed(false); if (!disabled) onClick(); }}
       onPointerLeave={() => setPressed(false)}
       style={{
         background: color,
-        boxShadow: pressed
-          ? `inset 3px 3px 8px rgba(0,0,0,0.22), inset -2px -2px 5px rgba(255,255,255,0.15)`
-          : `4px 4px 10px rgba(0,0,0,0.16), -3px -3px 8px rgba(255,255,255,0.5)`,
+        boxShadow: pressed && !disabled
+          ? 'inset 3px 3px 8px rgba(0,0,0,0.22), inset -2px -2px 5px rgba(255,255,255,0.15)'
+          : '4px 4px 10px rgba(0,0,0,0.16), -3px -3px 8px rgba(255,255,255,0.5)',
         borderRadius: '14px',
         border: 'none',
-        cursor: 'pointer',
+        cursor: disabled ? 'default' : 'pointer',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         transition: 'box-shadow 0.07s, transform 0.07s',
-        transform: pressed ? 'scale(0.97)' : 'scale(1)',
+        transform: pressed && !disabled ? 'scale(0.97)' : 'scale(1)',
         userSelect: 'none',
         WebkitUserSelect: 'none',
+        opacity: disabled ? 0.45 : 1,
         ...style,
       }}
     >
-      <span style={{ fontSize: '13px', fontWeight: 700, color: '#fff', letterSpacing: '0.02em' }}>{label}</span>
+      {icon}
     </button>
   );
 }
@@ -94,52 +95,56 @@ export function Numpad({ value, onChange, onAddItem, onComplete, canAdd, canComp
     onChange(next);
   };
 
-  const keyH = 52;
-
   return (
     <div style={{
-      background: '#e4e7ef',
+      background: '#eef0f5',
       borderRadius: '20px',
       padding: '14px',
-      boxShadow: '8px 8px 18px #c0c3ca, -8px -8px 18px #ffffff',
+      boxShadow: '5px 5px 14px #c0c3ca, -5px -5px 14px #ffffff',
     }}>
-      {/* Keys grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 9, marginBottom: 9 }}>
-        <NumKey label="7" onClick={() => handleDigit('7')} style={{ height: keyH }} />
-        <NumKey label="8" onClick={() => handleDigit('8')} style={{ height: keyH }} />
-        <NumKey label="9" onClick={() => handleDigit('9')} style={{ height: keyH }} />
-        <NumKey onClick={handleBack} style={{ height: keyH, background: '#dde0e8' }}>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(4, 1fr)',
+        gridAutoRows: '52px',
+        gap: 9,
+      }}>
+        {/* Row 1 */}
+        <NumKey label="7" onClick={() => handleDigit('7')} />
+        <NumKey label="8" onClick={() => handleDigit('8')} />
+        <NumKey label="9" onClick={() => handleDigit('9')} />
+        <NumKey onClick={handleBack} style={{ background: '#dde0e8' }}>
           <Delete size={17} color="#8a8fa8" />
         </NumKey>
 
-        <NumKey label="4" onClick={() => handleDigit('4')} style={{ height: keyH }} />
-        <NumKey label="5" onClick={() => handleDigit('5')} style={{ height: keyH }} />
-        <NumKey label="6" onClick={() => handleDigit('6')} style={{ height: keyH }} />
-        <div />
+        {/* Rows 2–3, cols 1–3 — auto-placed, flows around col 4 */}
+        <NumKey label="4" onClick={() => handleDigit('4')} />
+        <NumKey label="5" onClick={() => handleDigit('5')} />
+        <NumKey label="6" onClick={() => handleDigit('6')} />
 
-        <NumKey label="1" onClick={() => handleDigit('1')} style={{ height: keyH }} />
-        <NumKey label="2" onClick={() => handleDigit('2')} style={{ height: keyH }} />
-        <NumKey label="3" onClick={() => handleDigit('3')} style={{ height: keyH }} />
-        <div />
+        <NumKey label="1" onClick={() => handleDigit('1')} />
+        <NumKey label="2" onClick={() => handleDigit('2')} />
+        <NumKey label="3" onClick={() => handleDigit('3')} />
 
-        <NumKey label="0" onClick={() => handleDigit('0')} style={{ height: keyH, gridColumn: 'span 2' }} />
-        <NumKey label="." onClick={() => handleDigit('.')} style={{ height: keyH }} />
-        <div />
-      </div>
+        {/* Row 4, cols 1–3 */}
+        <NumKey label="0" onClick={() => handleDigit('0')} style={{ gridColumn: 'span 2' }} />
+        <NumKey label="." onClick={() => handleDigit('.')} />
 
-      {/* Action buttons */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 9 }}>
+        {/* Tambah — col 4, rows 2–3 */}
         <ActionKey
-          label="+ Tambah Item"
+          icon={<Plus size={22} color="#fff" />}
           onClick={onAddItem}
-          color={canAdd ? '#52b96a' : '#a8acbe'}
-          style={{ height: 46, opacity: canAdd ? 1 : 0.55 }}
+          color={canAdd ? '#4a90d9' : '#a8acbe'}
+          disabled={!canAdd}
+          style={{ gridColumn: 4, gridRow: '2 / 4', height: 'auto' }}
         />
+
+        {/* Selesai — col 4, row 4 */}
         <ActionKey
-          label="✓ Selesai"
+          icon={<Check size={20} color="#fff" />}
           onClick={onComplete}
-          color={canComplete ? '#4a90d9' : '#a8acbe'}
-          style={{ height: 46, opacity: canComplete ? 1 : 0.55 }}
+          color={canComplete ? '#52b96a' : '#a8acbe'}
+          disabled={!canComplete}
+          style={{ gridColumn: 4, gridRow: 4 }}
         />
       </div>
     </div>

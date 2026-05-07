@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, MessageSquare, User, Search, Phone } from 'lucide-react';
+import { X, MessageSquare, User, Search, Phone, ChevronDown } from 'lucide-react';
 import { useAppStore, formatRupiah, TransactionItem, Member } from '../store';
 import { PriceTicker } from '../components/PriceTicker';
 import { PriceEditorModal } from '../components/PriceEditorModal';
@@ -106,7 +106,8 @@ function MemberPickerModal({ members, onSelect, onClose }: {
               >
                 <div style={{
                   width: 36, height: 36, borderRadius: '10px', flexShrink: 0,
-                  background: `${color}1a`, border: `1.5px solid ${color}30`,
+                  background: `${color}1a`,
+                  boxShadow: '2px 2px 5px #c8cad1, -2px -2px 5px rgba(255,255,255,0.9)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}>
                   <span style={{ fontSize: '12px', fontWeight: 800, color }}>{initials(m.name)}</span>
@@ -137,6 +138,7 @@ export default function HomeScreen() {
   const [showRemarks, setShowRemarks] = useState(false);
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
   const [showMemberPicker, setShowMemberPicker] = useState(false);
+  const [showExtras, setShowExtras] = useState(false);
 
   const selectedProduct = step.type === 'quantity' ? step : null;
 
@@ -206,6 +208,7 @@ export default function HomeScreen() {
     setInputValue('0');
     setRemarks('');
     setShowRemarks(false);
+    setShowExtras(false);
     setSelectedMember(null);
     setCompletedFlash(true);
     setTimeout(() => setCompletedFlash(false), 1500);
@@ -234,7 +237,7 @@ export default function HomeScreen() {
   });
 
   return (
-    <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: '14px 14px 8px', gap: 9 }}>
+    <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: '14px 14px 100px', gap: 12 }}>
       {showPriceEditor && <PriceEditorModal onClose={() => setShowPriceEditor(false)} />}
       {showMemberPicker && (
         <MemberPickerModal
@@ -249,12 +252,12 @@ export default function HomeScreen() {
 
       {/* Keranjang */}
       <div style={{
-        flex: 1, overflow: 'auto',
+        flex: '0 0 auto', overflow: 'auto',
         background: '#eef0f5',
         boxShadow: 'inset 3px 3px 8px #c8cad1, inset -3px -3px 8px #ffffff',
         borderRadius: '14px',
-        padding: '10px 12px',
-        display: 'flex', flexDirection: 'column', gap: 0, minHeight: 60,
+        padding: '11px 13px',
+        display: 'flex', flexDirection: 'column', gap: 0, minHeight: 175, maxHeight: 200,
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: items.length > 0 ? 7 : 0 }}>
           <span style={{ fontSize: '9px', color: '#9a9db5', letterSpacing: '0.08em', fontWeight: 600 }}>
@@ -312,7 +315,7 @@ export default function HomeScreen() {
       </div>
 
       {/* BOTTOM ZONE */}
-      <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 9 }}>
+      <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
 
         {/* Calculator display */}
         <div style={{
@@ -349,7 +352,7 @@ export default function HomeScreen() {
           {/* Number display */}
           <div style={{
             fontFamily: 'var(--font-mono)',
-            fontSize: '34px', fontWeight: 500, color: '#dde2f0',
+            fontSize: '34px', fontWeight: 700, color: '#dde2f0',
             textAlign: 'right', letterSpacing: '0.06em', lineHeight: 1,
             display: 'flex', alignItems: 'baseline', justifyContent: 'flex-end', gap: 1,
           }}>
@@ -364,9 +367,9 @@ export default function HomeScreen() {
         </div>
 
         {/* Product Selection */}
-        <div style={{ background: '#eef0f5', boxShadow: '5px 5px 12px #c8cad1, -5px -5px 12px #ffffff', borderRadius: '16px', padding: '10px' }}>
-          <div style={{ marginBottom: 7 }}>
-            <div style={{ fontSize: '8px', color: '#b8bbd0', letterSpacing: '0.06em', marginBottom: 5 }}>KEDELAI</div>
+        <div style={{ background: '#eef0f5', boxShadow: '5px 5px 12px #c8cad1, -5px -5px 12px #ffffff', borderRadius: '16px', padding: '12px 12px 8px' }}>
+          <div style={{ marginBottom: 9 }}>
+            <div style={{ fontSize: '8px', color: '#b8bbd0', letterSpacing: '0.06em', marginBottom: 7 }}>KEDELAI</div>
             <div style={{ display: 'flex', gap: 7 }}>
               {soybeanProducts.map(p => {
                 const isActive = step.type === 'quantity' && step.productId === p.id;
@@ -382,7 +385,7 @@ export default function HomeScreen() {
             </div>
           </div>
           <div>
-            <div style={{ fontSize: '8px', color: '#b8bbd0', letterSpacing: '0.06em', marginBottom: 5 }}>LAINNYA</div>
+            <div style={{ fontSize: '8px', color: '#b8bbd0', letterSpacing: '0.06em', marginBottom: 7 }}>LAINNYA</div>
             <div style={{ display: 'flex', gap: 7 }}>
               <button
                 onClick={handlePlasticClick}
@@ -404,6 +407,17 @@ export default function HomeScreen() {
               })}
             </div>
           </div>
+          {/* Extras chevron — lives inside the product panel */}
+          <button
+            onClick={() => setShowExtras(s => !s)}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', background: 'transparent', border: 'none', cursor: 'pointer', padding: '8px 0 2px' }}
+          >
+            <ChevronDown
+              size={16}
+              color={showExtras || remarks || selectedMember ? '#4a90d9' : '#9a9db5'}
+              style={{ transform: showExtras ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), color 0.2s' }}
+            />
+          </button>
         </div>
 
         {/* Plastic size grid */}
@@ -420,73 +434,75 @@ export default function HomeScreen() {
           </div>
         )}
 
-        {/* Remarks + Member trays */}
-        <div style={{ display: 'flex', gap: 7 }}>
-          {/* Remarks tray */}
-          <div style={{
-            flex: 1,
-            background: '#eef0f5',
-            boxShadow: showRemarks ? 'inset 3px 3px 7px #c8cad1, inset -3px -3px 7px #ffffff' : '4px 4px 9px #c8cad1, -4px -4px 9px #ffffff',
-            borderRadius: '13px', overflow: 'hidden', transition: 'all 0.2s',
-          }}>
-            <button
-              onClick={() => setShowRemarks(s => !s)}
-              style={{ width: '100%', background: 'transparent', border: 'none', cursor: 'pointer', padding: '9px 11px', display: 'flex', alignItems: 'center', gap: 7 }}
-            >
-              <MessageSquare size={12} color={remarks ? '#4a90d9' : '#9a9db5'} />
-              <span style={{ fontSize: '10px', fontWeight: 600, color: remarks ? '#4a90d9' : '#9a9db5', flex: 1, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {remarks ? remarks : 'Catatan'}
-              </span>
-            </button>
-            {showRemarks && (
-              <div style={{ padding: '0 10px 9px', animation: 'textarea-in 180ms cubic-bezier(0.16, 1, 0.3, 1) both' }}>
-                <textarea
-                  placeholder="Catatan khusus..."
-                  value={remarks}
-                  onChange={e => setRemarks(e.target.value)}
-                  rows={2}
-                  style={{
-                    width: '100%', boxSizing: 'border-box',
-                    background: '#eef0f5', boxShadow: 'inset 2px 2px 5px #c8cad1, inset -2px -2px 5px #ffffff',
-                    borderRadius: '9px', border: 'none', outline: 'none',
-                    padding: '8px 10px', fontSize: '12px', color: '#2d3142',
-                    resize: 'none', lineHeight: 1.5, fontFamily: 'inherit',
-                  }}
-                  autoFocus
-                />
-              </div>
-            )}
-          </div>
-
-          {/* Member tray */}
-          <button
-            onClick={() => setShowMemberPicker(true)}
-            style={{
-              flexShrink: 0, padding: '9px 11px',
+        {/* Catatan + Pembeli — revealed on demand */}
+        {showExtras && (
+          <div style={{ display: 'flex', gap: 8, animation: 'panel-in 180ms cubic-bezier(0.16, 1, 0.3, 1) both' }}>
+            {/* Remarks tray */}
+            <div style={{
+              flex: 1,
               background: '#eef0f5',
-              boxShadow: selectedMember ? 'inset 3px 3px 7px #c8cad1, inset -3px -3px 7px #ffffff' : '4px 4px 9px #c8cad1, -4px -4px 9px #ffffff',
-              borderRadius: '13px', border: 'none', cursor: 'pointer',
-              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3,
-              minWidth: 64, transition: 'all 0.15s',
-            }}
-          >
-            {selectedMember ? (
-              <>
-                <div style={{ width: 22, height: 22, borderRadius: '6px', background: `${getAvatarColor(selectedMember.id)}22`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <span style={{ fontSize: '9px', fontWeight: 800, color: getAvatarColor(selectedMember.id) }}>{initials(selectedMember.name)}</span>
-                </div>
-                <span style={{ fontSize: '9px', fontWeight: 700, color: '#4a90d9', maxWidth: 60, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {selectedMember.name.split(' ')[0]}
+              boxShadow: showRemarks ? 'inset 3px 3px 8px #c8cad1, inset -3px -3px 8px #ffffff' : '5px 5px 11px #c4c7ce, -4px -4px 10px #ffffff',
+              borderRadius: '13px', overflow: 'hidden', transition: 'box-shadow 0.2s',
+            }}>
+              <button
+                onClick={() => setShowRemarks(s => !s)}
+                style={{ width: '100%', background: 'transparent', border: 'none', cursor: 'pointer', padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 7 }}
+              >
+                <MessageSquare size={12} color={remarks ? '#4a90d9' : '#9a9db5'} />
+                <span style={{ fontSize: '10px', fontWeight: 600, color: remarks ? '#4a90d9' : '#9a9db5', flex: 1, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {remarks ? remarks : 'Catatan'}
                 </span>
-              </>
-            ) : (
-              <>
-                <User size={14} color="#9a9db5" />
-                <span style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5' }}>Pembeli</span>
-              </>
-            )}
-          </button>
-        </div>
+              </button>
+              {showRemarks && (
+                <div style={{ padding: '5px 11px 11px', animation: 'textarea-in 180ms cubic-bezier(0.16, 1, 0.3, 1) both' }}>
+                  <textarea
+                    placeholder="Catatan khusus..."
+                    value={remarks}
+                    onChange={e => setRemarks(e.target.value)}
+                    rows={2}
+                    style={{
+                      width: '100%', boxSizing: 'border-box',
+                      background: '#eef0f5', boxShadow: 'inset 2px 2px 6px #c8cad1, inset -2px -2px 6px #ffffff',
+                      borderRadius: '9px', border: 'none', outline: 'none',
+                      padding: '9px 11px', fontSize: '12px', color: '#2d3142',
+                      resize: 'none', lineHeight: 1.5, fontFamily: 'inherit',
+                    }}
+                    autoFocus
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Member tray */}
+            <button
+              onClick={() => setShowMemberPicker(true)}
+              style={{
+                flexShrink: 0, padding: '10px 12px',
+                background: '#eef0f5',
+                boxShadow: selectedMember ? 'inset 3px 3px 8px #c8cad1, inset -3px -3px 8px #ffffff' : '5px 5px 11px #c4c7ce, -4px -4px 10px #ffffff',
+                borderRadius: '13px', border: 'none', cursor: 'pointer',
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3,
+                minWidth: 64, transition: 'all 0.15s',
+              }}
+            >
+              {selectedMember ? (
+                <>
+                  <div style={{ width: 22, height: 22, borderRadius: '6px', background: `${getAvatarColor(selectedMember.id)}22`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <span style={{ fontSize: '9px', fontWeight: 800, color: getAvatarColor(selectedMember.id) }}>{initials(selectedMember.name)}</span>
+                  </div>
+                  <span style={{ fontSize: '9px', fontWeight: 700, color: '#4a90d9', maxWidth: 60, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {selectedMember.name.split(' ')[0]}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <User size={14} color="#9a9db5" />
+                  <span style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5' }}>Pembeli</span>
+                </>
+              )}
+            </button>
+          </div>
+        )}
 
         {/* Numpad */}
         <Numpad

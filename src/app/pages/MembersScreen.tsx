@@ -89,6 +89,19 @@ export default function MembersScreen() {
 
   return (
     <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: '16px 16px 8px', gap: 12 }}>
+      <style>{`
+        @keyframes form-expand {
+          from { opacity: 0; transform: translateY(-6px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          *, *::before, *::after {
+            animation-duration: 0.01ms !important;
+            animation-iteration-count: 1 !important;
+            transition-duration: 0.01ms !important;
+          }
+        }
+      `}</style>
 
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
@@ -119,6 +132,7 @@ export default function MembersScreen() {
           boxShadow: SHD_RAISED_STRONG,
           borderRadius: '16px',
           padding: '16px',
+          animation: 'form-expand 220ms cubic-bezier(0.16, 1, 0.3, 1) both',
         }}>
           <div style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5', letterSpacing: '0.10em', textTransform: 'uppercase', marginBottom: 14 }}>ANGGOTA BARU</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>

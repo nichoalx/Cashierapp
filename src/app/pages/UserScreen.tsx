@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../AuthContext';
-import { LogOut, Shield, Clock, ChevronRight, Info } from 'lucide-react';
+import { LogOut, Clock, Info } from 'lucide-react';
 import { useAppStore, formatRupiah } from '../store';
 
 const SHD_RAISED_STD    = '4px 4px 9px #c8cad1, -4px -4px 9px #ffffff';

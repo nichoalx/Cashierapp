@@ -16,13 +16,18 @@ export function BottomNav() {
 
   return (
     <nav style={{
+      position: 'absolute',
+      bottom: 14,
+      left: 16,
+      right: 16,
+      zIndex: 10,
       background: '#eef0f5',
-      boxShadow: '-2px -2px 10px rgba(255,255,255,0.8), 2px 0px 10px #c8cad1',
+      boxShadow: '0 8px 32px rgba(0,0,0,0.14), 0 2px 8px rgba(0,0,0,0.08)',
+      borderRadius: '999px',
       display: 'flex',
       alignItems: 'center',
-      padding: '0 2px',
-      height: 62,
-      flexShrink: 0,
+      padding: '0 8px',
+      height: 58,
     }}>
       {tabs.map(tab => {
         const isActive = location.pathname === tab.path;
@@ -34,11 +39,9 @@ export function BottomNav() {
             style={{
               flex: 1,
               display: 'flex',
-              flexDirection: 'column',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: 3,
-              padding: '6px 1px',
+              padding: '4px',
               border: 'none',
               background: 'transparent',
               cursor: 'pointer',
@@ -47,7 +50,7 @@ export function BottomNav() {
             <div style={{
               width: 38,
               height: 38,
-              borderRadius: '11px',
+              borderRadius: '50%',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -63,14 +66,6 @@ export function BottomNav() {
                 strokeWidth={isActive ? 2.5 : 1.8}
               />
             </div>
-            <span style={{
-              fontSize: '8px',
-              fontWeight: isActive ? 700 : 500,
-              color: isActive ? '#4a90d9' : '#9a9db5',
-              letterSpacing: '0.03em',
-            }}>
-              {tab.label}
-            </span>
           </button>
         );
       })}
