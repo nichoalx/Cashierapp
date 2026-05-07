@@ -315,6 +315,7 @@ function StockCard({ s, maxQty }: { s: ReturnType<typeof useAppStore>['stock'][0
       background: '#eef0f5',
       boxShadow: SHD_RAISED_LIST,
       borderRadius: '14px', padding: '12px 14px',
+      flexShrink: 0,
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <div style={{
@@ -441,23 +442,25 @@ export default function StockScreen() {
       {/* Scrollable content */}
       <div style={{
         flex: 1,
+        minHeight: 0,
         overflow: 'auto',
         display: 'flex',
         flexDirection: 'column',
         gap: 12,
         margin: '0 -8px',
-        padding: '4px 8px 14px',
+        padding: '4px 8px 80px',
       }}>
-        <div style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5', letterSpacing: '0.08em', textTransform: 'uppercase', paddingLeft: 2 }}>Kedelai</div>
+        <div style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5', letterSpacing: '0.08em', textTransform: 'uppercase', paddingLeft: 2, flexShrink: 0 }}>Kedelai</div>
         {soybeanStock.map(s => <StockCard key={s.productId} s={s} maxQty={maxQty(s)} />)}
 
-        <div style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5', letterSpacing: '0.08em', textTransform: 'uppercase', paddingLeft: 2, marginTop: 4 }}>Lainnya</div>
+        <div style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5', letterSpacing: '0.08em', textTransform: 'uppercase', paddingLeft: 2, marginTop: 4, flexShrink: 0 }}>Lainnya</div>
         {otherStock.map(s => <StockCard key={s.productId} s={s} maxQty={maxQty(s)} />)}
 
         {/* History section */}
         <div style={{
           marginTop: 6, background: '#eef0f5', boxShadow: SHD_RAISED_STD,
           borderRadius: '14px', padding: '12px 14px',
+          flexShrink: 0,
         }}>
           <div style={{ position: 'relative' }}>
             <AdditionDateNav

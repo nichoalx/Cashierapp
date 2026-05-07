@@ -359,7 +359,8 @@ export default function TransactionLogScreen() {
     <div style={{
       flex: 1,
       minHeight: 0,
-      overflow: 'auto',
+      overflowY: 'auto',
+      overflowX: 'hidden',
       display: 'flex',
       flexDirection: 'column',
       gap: 12,
@@ -367,7 +368,7 @@ export default function TransactionLogScreen() {
       padding: '4px 8px 80px',
     }}>
       {filteredTxs.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '32px 20px' }}>
+        <div style={{ textAlign: 'center', padding: '32px 20px', flexShrink: 0 }}>
           <div style={{
             width: 52, height: 52, borderRadius: '14px',
             background: '#eef0f5', boxShadow: SHD_RAISED_STD,
@@ -398,6 +399,7 @@ export default function TransactionLogScreen() {
               background: '#eef0f5', boxShadow: SHD_RAISED_LIST,
               borderRadius: '16px', overflow: 'hidden',
               transition: 'all 0.2s',
+              flexShrink: 0,
             }}>
               {/* Row */}
               <div
@@ -514,7 +516,7 @@ export default function TransactionLogScreen() {
   );
 
   return (
-    <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: '16px 16px 8px', gap: 10 }}>
+    <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: '16px 16px 8px', gap: 10 }}>
       {showPriceEditor && <PriceEditorModal onClose={() => setShowPriceEditor(false)} />}
       {editingTx && (
         <EditModal
