@@ -393,24 +393,8 @@ export default function StockScreen() {
 
       <PriceTicker onOpenPriceEditor={() => setShowPriceEditor(true)} />
 
-      {/* Header */}
+      {/* Stock alert + add button */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
-          <div style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Inventori</div>
-          <h2 style={{ margin: '2px 0 0', color: '#2d3142', fontSize: '20px', fontWeight: 700, lineHeight: 1.3 }}>Stok Barang</h2>
-        </div>
-        <button onClick={() => setShowAddStock(true)} style={{
-          height: 38, padding: '0 14px', borderRadius: '11px', border: 'none', cursor: 'pointer',
-          background: '#eef0f5', boxShadow: SHD_RAISED_STD,
-          display: 'flex', alignItems: 'center', gap: 5, color: '#4a90d9', fontSize: '12px', fontWeight: 600,
-          transition: 'box-shadow 0.12s',
-        }}>
-          <Plus size={14} /> Tambah Stok
-        </button>
-      </div>
-
-      {/* Stock alert */}
-      {(criticalCount > 0 || lowCount > 0) && (
         <div style={{ display: 'flex', gap: 7, animation: 'alert-in 180ms cubic-bezier(0.22, 1, 0.36, 1) both' }}>
           {criticalCount > 0 && (
             <div style={{
@@ -437,7 +421,15 @@ export default function StockScreen() {
             </div>
           )}
         </div>
-      )}
+        <button onClick={() => setShowAddStock(true)} style={{
+          height: 38, padding: '0 14px', borderRadius: '11px', border: 'none', cursor: 'pointer',
+          background: '#eef0f5', boxShadow: SHD_RAISED_STD,
+          display: 'flex', alignItems: 'center', gap: 5, color: '#4a90d9', fontSize: '12px', fontWeight: 600,
+          transition: 'box-shadow 0.12s',
+        }}>
+          <Plus size={14} /> Tambah Stok
+        </button>
+      </div>
 
       {/* Scrollable content */}
       <div style={{

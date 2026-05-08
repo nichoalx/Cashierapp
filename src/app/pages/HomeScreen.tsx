@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { X, MessageSquare, User, Search, Phone, ChevronDown } from 'lucide-react';
+import { X, MessageSquare, User } from 'lucide-react';
 import { useAppStore, formatRupiah, TransactionItem, Member } from '../store';
 import { PriceTicker } from '../components/PriceTicker';
 import { PriceEditorModal } from '../components/PriceEditorModal';
 import { Numpad } from '../components/Numpad';
+import { MemberPickerModal } from '../components/MemberPickerModal';
 
 type Step =
   | { type: 'idle' }
@@ -14,25 +15,13 @@ function genId() { return Math.random().toString(36).slice(2, 10); }
 
 const PLASTIC_COLOR = '#38b2ac';
 
-function getAvatarColor(id: string) {
-  const COLORS = ['#f5903d', '#4a90d9', '#52b96a', '#9b6dff', '#e05a6a', '#38b2ac', '#d4a017', '#e84393'];
-  let hash = 0;
-  for (let i = 0; i < id.length; i++) hash = id.charCodeAt(i) + hash * 31;
-  return COLORS[Math.abs(hash) % COLORS.length];
-}
-function initials(name: string) { return name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase(); }
-
-// Member picker modal
-function MemberPickerModal({ members, onSelect, onClose }: {
-  members: Member[];
-  onSelect: (m: Member | null) => void;
+// Remarks modal
+function RemarksModal({ value, onSave, onClose }: {
+  value: string;
+  onSave: (v: string) => void;
   onClose: () => void;
 }) {
-  const [search, setSearch] = useState('');
-  const filtered = members.filter(m =>
-    m.name.toLowerCase().includes(search.toLowerCase()) ||
-    m.phone.includes(search)
-  );
+  const [draft, setDraft] = React.useState(value);
   return (
     <div
       style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
@@ -42,86 +31,40 @@ function MemberPickerModal({ members, onSelect, onClose }: {
         onClick={e => e.stopPropagation()}
         style={{
           background: '#eef0f5', borderRadius: '22px 22px 0 0',
-          width: '100%', maxWidth: 430, maxHeight: '60vh',
-          display: 'flex', flexDirection: 'column',
+          width: '100%', maxWidth: 430,
           boxShadow: '0 -8px 30px rgba(0,0,0,0.15)',
-          overflow: 'hidden',
+          padding: '20px 16px 32px',
           animation: 'sheet-slide-up 250ms cubic-bezier(0.16, 1, 0.3, 1) both',
         }}
       >
-        <div style={{ padding: '16px 16px 10px', borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
-          <div style={{ fontSize: '9px', color: '#9a9db5', letterSpacing: '0.1em', marginBottom: 2 }}>PILIH</div>
-          <div style={{ fontSize: '16px', fontWeight: 700, color: '#2d3142', marginBottom: 10 }}>Pembeli / Anggota</div>
-          <div style={{ position: 'relative' }}>
-            <Search size={13} color="#9a9db5" style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
-            <input
-              type="text" placeholder="Cari nama atau HP..."
-              value={search} onChange={e => setSearch(e.target.value)}
-              autoFocus
-              style={{
-                width: '100%', boxSizing: 'border-box',
-                background: '#eef0f5',
-                boxShadow: 'inset 2px 2px 5px #c8cad1, inset -2px -2px 5px #ffffff',
-                borderRadius: '10px', border: 'none', outline: 'none',
-                padding: '9px 12px 9px 30px', fontSize: '13px', color: '#2d3142',
-              }}
-            />
-          </div>
-        </div>
-
-        <div style={{ overflow: 'auto', padding: '8px 12px 16px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {/* Clear selection */}
-          <button
-            onClick={() => { onSelect(null); onClose(); }}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
-              borderRadius: '11px', border: 'none', cursor: 'pointer',
-              background: '#eef0f5',
-              boxShadow: '2px 2px 6px #caccd4, -2px -2px 4px rgba(255,255,255,0.8)',
-            }}
-          >
-            <div style={{ width: 36, height: 36, borderRadius: '10px', background: '#eef0f5', boxShadow: 'inset 2px 2px 5px #c8cad1, inset -2px -2px 5px #ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <X size={14} color="#9a9db5" />
-            </div>
-            <span style={{ fontSize: '13px', fontWeight: 600, color: '#9a9db5' }}>Tanpa Pembeli</span>
-          </button>
-
-          {filtered.length === 0 && (
-            <div style={{ textAlign: 'center', padding: '20px', color: '#b0b4c8', fontSize: '12px' }}>
-              {search ? 'Tidak ditemukan' : 'Belum ada anggota'}
-            </div>
-          )}
-          {filtered.map(m => {
-            const color = getAvatarColor(m.id);
-            return (
-              <button key={m.id}
-                onClick={() => { onSelect(m); onClose(); }}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
-                  borderRadius: '11px', border: 'none', cursor: 'pointer',
-                  background: '#eef0f5',
-                  boxShadow: '2px 2px 6px #caccd4, -2px -2px 4px rgba(255,255,255,0.8)',
-                  textAlign: 'left',
-                }}
-              >
-                <div style={{
-                  width: 36, height: 36, borderRadius: '10px', flexShrink: 0,
-                  background: `${color}1a`,
-                  boxShadow: '2px 2px 5px #c8cad1, -2px -2px 5px rgba(255,255,255,0.9)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}>
-                  <span style={{ fontSize: '12px', fontWeight: 800, color }}>{initials(m.name)}</span>
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: '13px', fontWeight: 700, color: '#2d3142' }}>{m.name}</div>
-                  <div style={{ fontSize: '10px', color: '#9a9db5', display: 'flex', alignItems: 'center', gap: 3 }}>
-                    <Phone size={9} color="#b0b4c8" /> {m.phone || '—'}
-                  </div>
-                </div>
-              </button>
-            );
-          })}
-        </div>
+        <div style={{ fontSize: '9px', color: '#9a9db5', letterSpacing: '0.1em', marginBottom: 2 }}>TAMBAH</div>
+        <div style={{ fontSize: '16px', fontWeight: 700, color: '#2d3142', marginBottom: 14 }}>Catatan</div>
+        <textarea
+          placeholder="Catatan khusus..."
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          rows={3}
+          autoFocus
+          style={{
+            width: '100%', boxSizing: 'border-box',
+            background: '#eef0f5', boxShadow: 'inset 2px 2px 6px #c8cad1, inset -2px -2px 6px #ffffff',
+            borderRadius: '12px', border: 'none', outline: 'none',
+            padding: '12px 14px', fontSize: '13px', color: '#2d3142',
+            resize: 'none', lineHeight: 1.5, fontFamily: 'inherit',
+            marginBottom: 12, display: 'block',
+          }}
+        />
+        <button
+          onClick={() => { onSave(draft.trim()); onClose(); }}
+          style={{
+            width: '100%', height: 48, borderRadius: '12px', border: 'none', cursor: 'pointer',
+            background: '#4a90d9',
+            boxShadow: '4px 4px 10px rgba(0,0,0,0.16), -3px -3px 8px rgba(255,255,255,0.5)',
+            color: '#fff', fontWeight: 700, fontSize: '14px',
+          }}
+        >
+          Simpan
+        </button>
       </div>
     </div>
   );
@@ -135,10 +78,12 @@ export default function HomeScreen() {
   const [showPriceEditor, setShowPriceEditor] = useState(false);
   const [completedFlash, setCompletedFlash] = useState(false);
   const [remarks, setRemarks] = useState('');
-  const [showRemarks, setShowRemarks] = useState(false);
+  const [showRemarksModal, setShowRemarksModal] = useState(false);
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
   const [showMemberPicker, setShowMemberPicker] = useState(false);
-  const [showExtras, setShowExtras] = useState(false);
+  const [pressedIcon, setPressedIcon] = useState<string | null>(null);
+  const [pressedRemove, setPressedRemove] = useState<string | null>(null);
+
 
   const selectedProduct = step.type === 'quantity' ? step : null;
 
@@ -207,8 +152,6 @@ export default function HomeScreen() {
     setStep({ type: 'idle' });
     setInputValue('0');
     setRemarks('');
-    setShowRemarks(false);
-    setShowExtras(false);
     setSelectedMember(null);
     setCompletedFlash(true);
     setTimeout(() => setCompletedFlash(false), 1500);
@@ -239,6 +182,13 @@ export default function HomeScreen() {
   return (
     <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: '14px 14px 100px', gap: 12 }}>
       {showPriceEditor && <PriceEditorModal onClose={() => setShowPriceEditor(false)} />}
+      {showRemarksModal && (
+        <RemarksModal
+          value={remarks}
+          onSave={v => setRemarks(v)}
+          onClose={() => setShowRemarksModal(false)}
+        />
+      )}
       {showMemberPicker && (
         <MemberPickerModal
           members={members}
@@ -248,24 +198,46 @@ export default function HomeScreen() {
       )}
 
       {/* TOP ZONE */}
-      <PriceTicker onOpenPriceEditor={() => setShowPriceEditor(true)} />
+      <div style={{ flexShrink: 0 }}>
+        <PriceTicker onOpenPriceEditor={() => setShowPriceEditor(true)} />
+      </div>
 
       {/* Keranjang */}
       <div style={{
-        flex: '0 0 auto', overflow: 'auto',
+        flex: '1 1 auto', overflow: 'auto',
         background: '#eef0f5',
         boxShadow: 'inset 3px 3px 8px #c8cad1, inset -3px -3px 8px #ffffff',
         borderRadius: '14px',
         padding: '11px 13px',
-        display: 'flex', flexDirection: 'column', gap: 0, minHeight: 175, maxHeight: 200,
+        display: 'flex', flexDirection: 'column', gap: 0, minHeight: 60, maxHeight: 200,
       }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: items.length > 0 ? 7 : 0 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: items.length > 0 ? 7 : 0 }}>
           <span style={{ fontSize: '9px', color: '#9a9db5', letterSpacing: '0.08em', fontWeight: 600 }}>
             KERANJANG{items.length > 0 ? ` (${items.length})` : ''}
           </span>
-          {items.length > 0 && (
-            <span style={{ fontSize: '13px', fontWeight: 700, color: '#2d3142' }}>{formatRupiah(transactionTotal)}</span>
-          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <button
+              onClick={() => setShowRemarksModal(true)}
+              onPointerDown={() => setPressedIcon('remarks')}
+              onPointerUp={() => setPressedIcon(null)}
+              onPointerLeave={() => setPressedIcon(null)}
+              style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 5, display: 'flex', alignItems: 'center' }}
+            >
+              <MessageSquare size={15} color={remarks ? '#4a90d9' : '#c0c4d0'} style={{ transform: pressedIcon === 'remarks' ? 'scale(0.75)' : 'scale(1)', transition: 'transform 0.08s cubic-bezier(0.16, 1, 0.3, 1)' }} />
+            </button>
+            <button
+              onClick={() => setShowMemberPicker(true)}
+              onPointerDown={() => setPressedIcon('member')}
+              onPointerUp={() => setPressedIcon(null)}
+              onPointerLeave={() => setPressedIcon(null)}
+              style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 5, display: 'flex', alignItems: 'center' }}
+            >
+              <User size={15} color={selectedMember ? '#4a90d9' : '#c0c4d0'} style={{ transform: pressedIcon === 'member' ? 'scale(0.75)' : 'scale(1)', transition: 'transform 0.08s cubic-bezier(0.16, 1, 0.3, 1)' }} />
+            </button>
+            {items.length > 0 && (
+              <span style={{ fontSize: '13px', fontWeight: 700, color: '#2d3142', marginLeft: 2 }}>{formatRupiah(transactionTotal)}</span>
+            )}
+          </div>
         </div>
 
         {items.length === 0 && !completedFlash ? (
@@ -291,8 +263,14 @@ export default function HomeScreen() {
                 <span style={{ fontSize: '11px', fontWeight: 700, color: '#4a4e69', minWidth: 72, textAlign: 'right' }}>
                   {formatRupiah(item.total)}
                 </span>
-                <button onClick={() => removeItem(item.id)} style={{ background: 'transparent', border: 'none', color: '#e05a6a', cursor: 'pointer', padding: 2 }}>
-                  <X size={11} />
+                <button
+                  onClick={() => removeItem(item.id)}
+                  onPointerDown={() => setPressedRemove(item.id)}
+                  onPointerUp={() => setPressedRemove(null)}
+                  onPointerLeave={() => setPressedRemove(null)}
+                  style={{ background: 'transparent', border: 'none', color: '#e05a6a', cursor: 'pointer', padding: 2 }}
+                >
+                  <X size={11} style={{ transform: pressedRemove === item.id ? 'scale(0.72)' : 'scale(1)', transition: 'transform 0.08s cubic-bezier(0.16, 1, 0.3, 1)' }} />
                 </button>
               </div>
             ))}
@@ -329,14 +307,14 @@ export default function HomeScreen() {
             <div>
               {selectedProduct ? (
                 <>
-                  <div style={{ fontSize: '9px', color: '#3a4060', letterSpacing: '0.1em', marginBottom: 1 }}>PRODUK</div>
+                  <div style={{ fontSize: '9px', color: '#3a4060', letterSpacing: '0.1em', marginBottom: 1 }}>UNIT</div>
                   <div style={{ fontSize: '12px', fontWeight: 700, color: selectedProduct.color }}>
-                    {selectedProduct.productName}{selectedProduct.plasticSize ? ` · ${selectedProduct.plasticSize}` : ''}
+                    {selectedProduct.unit}
                   </div>
                 </>
               ) : (
                 <div style={{ fontSize: '10px', color: '#2e3550' }}>
-                  {step.type === 'plastic_size' ? '← pilih ukuran' : 'pilih produk ↓'}
+                  {step.type === 'plastic_size' ? '← pilih ukuran' : 'Unit: —'}
                 </div>
               )}
             </div>
@@ -367,7 +345,7 @@ export default function HomeScreen() {
         </div>
 
         {/* Product Selection */}
-        <div style={{ background: '#eef0f5', boxShadow: '5px 5px 12px #c8cad1, -5px -5px 12px #ffffff', borderRadius: '16px', padding: '12px 12px 8px' }}>
+        <div style={{ background: '#eef0f5', boxShadow: '5px 5px 12px #c8cad1, -5px -5px 12px #ffffff', borderRadius: '16px', padding: '12px 12px 12px' }}>
           <div style={{ marginBottom: 9 }}>
             <div style={{ fontSize: '8px', color: '#b8bbd0', letterSpacing: '0.06em', marginBottom: 7 }}>KEDELAI</div>
             <div style={{ display: 'flex', gap: 7 }}>
@@ -407,17 +385,6 @@ export default function HomeScreen() {
               })}
             </div>
           </div>
-          {/* Extras chevron — lives inside the product panel */}
-          <button
-            onClick={() => setShowExtras(s => !s)}
-            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', background: 'transparent', border: 'none', cursor: 'pointer', padding: '8px 0 2px' }}
-          >
-            <ChevronDown
-              size={16}
-              color={showExtras || remarks || selectedMember ? '#4a90d9' : '#9a9db5'}
-              style={{ transform: showExtras ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), color 0.2s' }}
-            />
-          </button>
         </div>
 
         {/* Plastic size grid */}
@@ -431,76 +398,6 @@ export default function HomeScreen() {
                 </button>
               ))}
             </div>
-          </div>
-        )}
-
-        {/* Catatan + Pembeli — revealed on demand */}
-        {showExtras && (
-          <div style={{ display: 'flex', gap: 8, animation: 'panel-in 180ms cubic-bezier(0.16, 1, 0.3, 1) both' }}>
-            {/* Remarks tray */}
-            <div style={{
-              flex: 1,
-              background: '#eef0f5',
-              boxShadow: showRemarks ? 'inset 3px 3px 8px #c8cad1, inset -3px -3px 8px #ffffff' : '5px 5px 11px #c4c7ce, -4px -4px 10px #ffffff',
-              borderRadius: '13px', overflow: 'hidden', transition: 'box-shadow 0.2s',
-            }}>
-              <button
-                onClick={() => setShowRemarks(s => !s)}
-                style={{ width: '100%', background: 'transparent', border: 'none', cursor: 'pointer', padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 7 }}
-              >
-                <MessageSquare size={12} color={remarks ? '#4a90d9' : '#9a9db5'} />
-                <span style={{ fontSize: '10px', fontWeight: 600, color: remarks ? '#4a90d9' : '#9a9db5', flex: 1, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {remarks ? remarks : 'Catatan'}
-                </span>
-              </button>
-              {showRemarks && (
-                <div style={{ padding: '5px 11px 11px', animation: 'textarea-in 180ms cubic-bezier(0.16, 1, 0.3, 1) both' }}>
-                  <textarea
-                    placeholder="Catatan khusus..."
-                    value={remarks}
-                    onChange={e => setRemarks(e.target.value)}
-                    rows={2}
-                    style={{
-                      width: '100%', boxSizing: 'border-box',
-                      background: '#eef0f5', boxShadow: 'inset 2px 2px 6px #c8cad1, inset -2px -2px 6px #ffffff',
-                      borderRadius: '9px', border: 'none', outline: 'none',
-                      padding: '9px 11px', fontSize: '12px', color: '#2d3142',
-                      resize: 'none', lineHeight: 1.5, fontFamily: 'inherit',
-                    }}
-                    autoFocus
-                  />
-                </div>
-              )}
-            </div>
-
-            {/* Member tray */}
-            <button
-              onClick={() => setShowMemberPicker(true)}
-              style={{
-                flexShrink: 0, padding: '10px 12px',
-                background: '#eef0f5',
-                boxShadow: selectedMember ? 'inset 3px 3px 8px #c8cad1, inset -3px -3px 8px #ffffff' : '5px 5px 11px #c4c7ce, -4px -4px 10px #ffffff',
-                borderRadius: '13px', border: 'none', cursor: 'pointer',
-                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3,
-                minWidth: 64, transition: 'all 0.15s',
-              }}
-            >
-              {selectedMember ? (
-                <>
-                  <div style={{ width: 22, height: 22, borderRadius: '6px', background: `${getAvatarColor(selectedMember.id)}22`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <span style={{ fontSize: '9px', fontWeight: 800, color: getAvatarColor(selectedMember.id) }}>{initials(selectedMember.name)}</span>
-                  </div>
-                  <span style={{ fontSize: '9px', fontWeight: 700, color: '#4a90d9', maxWidth: 60, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {selectedMember.name.split(' ')[0]}
-                  </span>
-                </>
-              ) : (
-                <>
-                  <User size={14} color="#9a9db5" />
-                  <span style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5' }}>Pembeli</span>
-                </>
-              )}
-            </button>
           </div>
         )}
 
@@ -530,10 +427,6 @@ export default function HomeScreen() {
         }
         @keyframes panel-in {
           from { opacity: 0; transform: translateY(-4px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes textarea-in {
-          from { opacity: 0; transform: translateY(-3px); }
           to   { opacity: 1; transform: translateY(0); }
         }
         @keyframes sheet-slide-up {

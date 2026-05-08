@@ -91,7 +91,7 @@ interface AppContextType {
   addPlasticSize: (size: string) => void;
   removePlasticSize: (id: string) => void;
   addTransaction: (items: TransactionItem[], remarks?: string, memberId?: string, memberName?: string) => void;
-  updateTransaction: (id: string, items: TransactionItem[]) => void;
+  updateTransaction: (id: string, items: TransactionItem[], remarks?: string, memberId?: string, memberName?: string) => void;
   deleteTransaction: (id: string) => void;
   addStock: (productId: string, quantity: number, productName: string, unit: string) => void;
   addMember: (name: string, phone: string) => void;
@@ -230,9 +230,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }));
   }, [orderCounter]);
 
-  const updateTransaction = useCallback((id: string, items: TransactionItem[]) => {
+  const updateTransaction = useCallback((id: string, items: TransactionItem[], remarks?: string, memberId?: string, memberName?: string) => {
     const total = items.reduce((s, i) => s + i.total, 0);
-    setTransactions(p => p.map(t => t.id === id ? { ...t, items, total } : t));
+    setTransactions(p => p.map(t => t.id === id ? { ...t, items, total, remarks, memberId, memberName } : t));
   }, []);
 
   const deleteTransaction = useCallback((id: string) => {

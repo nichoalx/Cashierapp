@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { Pencil, Trash2, X, Check, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Search, MessageSquare, User, Receipt } from 'lucide-react';
-import { useAppStore, formatRupiah, Transaction, TransactionItem } from '../store';
+import { Pencil, Trash2, X, Check, ChevronDown, ChevronLeft, ChevronRight, Search, SlidersHorizontal, MessageSquare, User, Receipt } from 'lucide-react';
+import { useAppStore, formatRupiah, Transaction, TransactionItem, Member } from '../store';
+import { MemberPickerModal } from '../components/MemberPickerModal';
 import { PriceTicker } from '../components/PriceTicker';
 import { PriceEditorModal } from '../components/PriceEditorModal';
 
@@ -190,11 +191,17 @@ function DateNavigator({ selectedDate, onChange }: { selectedDate: Date; onChang
 interface EditModalProps {
   transaction: Transaction;
   onClose: () => void;
-  onSave: (items: TransactionItem[]) => void;
+  onSave: (items: TransactionItem[], remarks: string, memberId?: string, memberName?: string) => void;
 }
 
 function EditModal({ transaction, onClose, onSave }: EditModalProps) {
-  const [items, setItems]       = useState<TransactionItem[]>(transaction.items.map(i => ({ ...i })));
+  const { members } = useAppStore();
+  const [items, setItems]           = useState<TransactionItem[]>(transaction.items.map(i => ({ ...i })));
+  const [editRemarks, setEditRemarks] = useState(transaction.remarks ?? '');
+  const [editMember, setEditMember]   = useState<Member | null>(
+    members.find(m => m.id === transaction.memberId) ?? null
+  );
+  const [showMemberPicker, setShowMemberPicker] = useState(false);
   const [savePressed, setSavePressed] = useState(false);
 
   const updateQty  = (id: string, val: string) => {
@@ -271,6 +278,50 @@ function EditModal({ transaction, onClose, onSave }: EditModalProps) {
               </button>
             </div>
           ))}
+
+          <div style={{ marginTop: 4, marginBottom: 4, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5', letterSpacing: '0.08em', textTransform: 'uppercase', marginTop: 4 }}>Catatan &amp; Pembeli</div>
+            <div style={{ position: 'relative' }}>
+              <MessageSquare size={13} color="#9a9db5" style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+              <input
+                type="text"
+                placeholder="Catatan..."
+                value={editRemarks}
+                onChange={e => setEditRemarks(e.target.value)}
+                style={{
+                  width: '100%', boxSizing: 'border-box',
+                  background: '#eef0f5',
+                  boxShadow: 'inset 2px 2px 5px #c0c3ca, inset -2px -2px 5px #f8f9fc',
+                  borderRadius: '10px', border: 'none', outline: 'none',
+                  padding: '9px 10px 9px 32px',
+                  fontSize: '13px', color: '#2d3142',
+                }}
+              />
+            </div>
+            <button
+              onClick={() => setShowMemberPicker(true)}
+              style={{
+                width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+                background: '#eef0f5',
+                boxShadow: 'inset 2px 2px 5px #c0c3ca, inset -2px -2px 5px #f8f9fc',
+                borderRadius: '10px', border: 'none', cursor: 'pointer',
+                padding: '9px 10px',
+              }}
+            >
+              <User size={13} color={editMember ? '#4a90d9' : '#9a9db5'} style={{ flexShrink: 0 }} />
+              <span style={{ flex: 1, textAlign: 'left', fontSize: '13px', color: editMember ? '#2d3142' : '#9a9db5' }}>
+                {editMember ? editMember.name : 'Pilih pembeli...'}
+              </span>
+              <ChevronRight size={13} color="#c0c4d0" style={{ flexShrink: 0 }} />
+            </button>
+            {showMemberPicker && (
+              <MemberPickerModal
+                members={members}
+                onSelect={m => setEditMember(m)}
+                onClose={() => setShowMemberPicker(false)}
+              />
+            )}
+          </div>
         </div>
 
         <div style={{ padding: '16px 20px 20px' }}>
@@ -279,7 +330,7 @@ function EditModal({ transaction, onClose, onSave }: EditModalProps) {
             <span style={{ fontSize: '16px', fontWeight: 700, color: '#2d3142' }}>{formatRupiah(newTotal)}</span>
           </div>
           <button
-            onClick={() => { onSave(items); onClose(); }}
+            onClick={() => { onSave(items, editRemarks, editMember?.id, editMember?.name); onClose(); }}
             onPointerDown={() => setSavePressed(true)}
             onPointerUp={() => setSavePressed(false)}
             onPointerLeave={() => setSavePressed(false)}
@@ -302,30 +353,58 @@ function EditModal({ transaction, onClose, onSave }: EditModalProps) {
   );
 }
 
+const SOYBEAN_IDS = ['mrb', 'sbs', 'bh', 'e'];
+const PLASTIC_ID  = 'plastic';
+const OTHER_IDS   = ['tempe', 'dages'];
+
 export default function TransactionLogScreen() {
   const { transactions, deleteTransaction, updateTransaction } = useAppStore();
   const [showPriceEditor, setShowPriceEditor] = useState(false);
   const [editingTx, setEditingTx]             = useState<Transaction | null>(null);
   const [expandedId, setExpandedId]           = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm]     = useState<string | null>(null);
+  const [pressedBtn, setPressedBtn]           = useState<string | null>(null);
+  const [pressedRow, setPressedRow]           = useState<string | null>(null);
   const [selectedDate, setSelectedDate]       = useState(new Date());
   const [searchQuery, setSearchQuery]         = useState('');
-  const [filterType, setFilterType]           = useState<'all' | 'soybean' | 'plastic' | 'other'>('all');
+  const [activeFilters, setActiveFilters]     = useState<Set<'soybean' | 'plastic' | 'other'>>(new Set());
+  const [filterOpen, setFilterOpen]           = useState(false);
+  const [filterBtnPressed, setFilterBtnPressed] = useState(false);
+  const searchRef = useRef<HTMLDivElement>(null);
+  const [summarySlide, setSummarySlide] = useState(0);
+  const [dragStart, setDragStart]       = useState<number | null>(null);
+  const [dragDelta, setDragDelta]       = useState(0);
 
-  const SOYBEAN_IDS = ['mrb', 'sbs', 'bh', 'e'];
-  const PLASTIC_ID  = 'plastic';
-  const OTHER_IDS   = ['tempe', 'dages'];
+  const toggleFilter = (key: 'soybean' | 'plastic' | 'other') => {
+    setActiveFilters(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
 
-  const dayTxs = transactions.filter(t => isSameDay(t.timestamp, selectedDate));
+  useEffect(() => {
+    if (!filterOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) setFilterOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [filterOpen]);
+
+  const dayTxs = useMemo(
+    () => transactions.filter(t => isSameDay(t.timestamp, selectedDate)),
+    [transactions, selectedDate]
+  );
 
   const filteredTxs = useMemo(() => {
     let list = dayTxs;
-    if (filterType !== 'all') {
+    if (activeFilters.size > 0) {
       list = list.filter(t => {
-        if (filterType === 'soybean') return t.items.some(i => SOYBEAN_IDS.includes(i.productId));
-        if (filterType === 'plastic') return t.items.some(i => i.productId === PLASTIC_ID);
-        if (filterType === 'other')   return t.items.some(i => OTHER_IDS.includes(i.productId));
-        return true;
+        if (activeFilters.has('soybean') && t.items.some(i => SOYBEAN_IDS.includes(i.productId))) return true;
+        if (activeFilters.has('plastic') && t.items.some(i => i.productId === PLASTIC_ID)) return true;
+        if (activeFilters.has('other')   && t.items.some(i => OTHER_IDS.includes(i.productId))) return true;
+        return false;
       });
     }
     if (searchQuery.trim()) {
@@ -343,17 +422,37 @@ export default function TransactionLogScreen() {
       });
     }
     return list;
-  }, [dayTxs, filterType, searchQuery]);
+  }, [dayTxs, activeFilters, searchQuery]);
 
-  const dayTotal    = filteredTxs.reduce((s, t) => s + t.total, 0);
+  const summaryStats = useMemo(() => {
+    const allItems = dayTxs.flatMap(t => t.items);
+
+    const soybeanMap: Record<string, { qty: number; name: string; color: string; unit: string }> = {};
+    for (const item of allItems) {
+      if (SOYBEAN_IDS.includes(item.productId)) {
+        if (!soybeanMap[item.productId])
+          soybeanMap[item.productId] = { qty: 0, name: item.productName, color: item.color, unit: item.unit };
+        soybeanMap[item.productId].qty += item.quantity;
+      }
+    }
+    const topSoybean = Object.values(soybeanMap).sort((a, b) => b.qty - a.qty)[0] ?? null;
+
+    const plasticMap: Record<string, { qty: number; unit: string }> = {};
+    for (const item of allItems) {
+      if (item.productId === PLASTIC_ID && item.plasticSize) {
+        if (!plasticMap[item.plasticSize]) plasticMap[item.plasticSize] = { qty: 0, unit: item.unit };
+        plasticMap[item.plasticSize].qty += item.quantity;
+      }
+    }
+    const topPlasticEntry = Object.entries(plasticMap).sort(([, a], [, b]) => b.qty - a.qty)[0];
+    const topPlastic = topPlasticEntry
+      ? { size: topPlasticEntry[0], qty: topPlasticEntry[1].qty, unit: topPlasticEntry[1].unit }
+      : null;
+
+    return { topSoybean, topPlastic };
+  }, [dayTxs]);
+
   const rawDayTotal = dayTxs.reduce((s, t) => s + t.total, 0);
-
-  const filterChips: { key: typeof filterType; label: string }[] = [
-    { key: 'all',     label: 'Semua'   },
-    { key: 'soybean', label: 'Kedelai' },
-    { key: 'plastic', label: 'Plastik' },
-    { key: 'other',   label: 'Lainnya' },
-  ];
 
   const renderTxList = () => (
     <div style={{
@@ -403,8 +502,15 @@ export default function TransactionLogScreen() {
             }}>
               {/* Row */}
               <div
-                style={{ padding: '12px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10 }}
+                style={{
+                  padding: '12px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10,
+                  transform: pressedRow === tx.id ? 'scale(0.985)' : 'scale(1)',
+                  transition: 'transform 0.08s cubic-bezier(0.16, 1, 0.3, 1)',
+                }}
                 onClick={() => setExpandedId(expanded ? null : tx.id)}
+                onPointerDown={() => setPressedRow(tx.id)}
+                onPointerUp={() => setPressedRow(null)}
+                onPointerLeave={() => setPressedRow(null)}
               >
                 <div style={{
                   width: 36, height: 36, borderRadius: '10px', background: '#eef0f5',
@@ -445,12 +551,12 @@ export default function TransactionLogScreen() {
                   </div>
                 </div>
 
-                {expanded ? <ChevronUp size={14} color="#9a9db5" /> : <ChevronDown size={14} color="#9a9db5" />}
+                <ChevronDown size={14} color="#9a9db5" style={{ transform: expanded ? 'rotate(-180deg)' : 'rotate(0deg)', transition: 'transform 0.22s cubic-bezier(0.16, 1, 0.3, 1)', flexShrink: 0 }} />
               </div>
 
               {/* Expanded detail */}
               {expanded && (
-                <div style={{ padding: '2px 14px 10px' }}>
+                <div style={{ padding: '0 16px 14px', animation: 'tx-expand-in 200ms cubic-bezier(0.16, 1, 0.3, 1) both' }}>
                   <div style={{ paddingTop: 10 }}>
                     {tx.items.map(item => (
                       <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
@@ -470,14 +576,20 @@ export default function TransactionLogScreen() {
                     )}
                   </div>
 
-                  <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                  <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
                     <button
                       onClick={(e) => { e.stopPropagation(); setEditingTx(tx); }}
+                      onPointerDown={() => setPressedBtn(`edit_${tx.id}`)}
+                      onPointerUp={() => setPressedBtn(null)}
+                      onPointerLeave={() => setPressedBtn(null)}
                       style={{
                         flex: 1, height: 36, borderRadius: '10px', border: 'none', cursor: 'pointer',
-                        background: '#eef0f5', boxShadow: SHD_RAISED_STD,
+                        background: '#eef0f5',
+                        boxShadow: pressedBtn === `edit_${tx.id}` ? SHD_RECESSED : SHD_RAISED_STD,
+                        transform: pressedBtn === `edit_${tx.id}` ? 'scale(0.96)' : 'scale(1)',
                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                         color: '#4a90d9', fontSize: '12px', fontWeight: 600,
+                        transition: 'box-shadow 0.07s, transform 0.07s',
                       }}
                     >
                       <Pencil size={13} /> Edit
@@ -486,13 +598,32 @@ export default function TransactionLogScreen() {
                       <>
                         <button
                           onClick={(e) => { e.stopPropagation(); deleteTransaction(tx.id); setDeleteConfirm(null); setExpandedId(null); }}
-                          style={{ flex: 1, height: 36, borderRadius: '10px', border: 'none', cursor: 'pointer', background: '#d4183d', color: '#fff', fontSize: '12px', fontWeight: 700 }}
+                          onPointerDown={() => setPressedBtn(`conf_${tx.id}`)}
+                          onPointerUp={() => setPressedBtn(null)}
+                          onPointerLeave={() => setPressedBtn(null)}
+                          style={{
+                            flex: 1, height: 36, borderRadius: '10px', border: 'none', cursor: 'pointer',
+                            background: '#d4183d', color: '#fff', fontSize: '12px', fontWeight: 700,
+                            boxShadow: pressedBtn === `conf_${tx.id}` ? SHD_ACTION_PRESS : SHD_ACTION_RAISED,
+                            transform: pressedBtn === `conf_${tx.id}` ? 'scale(0.96)' : 'scale(1)',
+                            transition: 'box-shadow 0.07s, transform 0.07s',
+                          }}
                         >
                           Hapus?
                         </button>
                         <button
                           onClick={(e) => { e.stopPropagation(); setDeleteConfirm(null); }}
-                          style={{ width: 36, height: 36, borderRadius: '10px', border: 'none', cursor: 'pointer', background: '#eef0f5', boxShadow: SHD_RAISED_STD, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                          onPointerDown={() => setPressedBtn(`canc_${tx.id}`)}
+                          onPointerUp={() => setPressedBtn(null)}
+                          onPointerLeave={() => setPressedBtn(null)}
+                          style={{
+                            width: 36, height: 36, borderRadius: '10px', border: 'none', cursor: 'pointer',
+                            background: '#eef0f5',
+                            boxShadow: pressedBtn === `canc_${tx.id}` ? SHD_RECESSED : SHD_RAISED_STD,
+                            transform: pressedBtn === `canc_${tx.id}` ? 'scale(0.96)' : 'scale(1)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            transition: 'box-shadow 0.07s, transform 0.07s',
+                          }}
                         >
                           <X size={14} color="#9a9db5" />
                         </button>
@@ -500,7 +631,18 @@ export default function TransactionLogScreen() {
                     ) : (
                       <button
                         onClick={(e) => { e.stopPropagation(); setDeleteConfirm(tx.id); }}
-                        style={{ flex: 1, height: 36, borderRadius: '10px', border: 'none', cursor: 'pointer', background: '#eef0f5', boxShadow: SHD_RAISED_STD, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, color: '#e05a6a', fontSize: '12px', fontWeight: 600 }}
+                        onPointerDown={() => setPressedBtn(`del_${tx.id}`)}
+                        onPointerUp={() => setPressedBtn(null)}
+                        onPointerLeave={() => setPressedBtn(null)}
+                        style={{
+                          flex: 1, height: 36, borderRadius: '10px', border: 'none', cursor: 'pointer',
+                          background: '#eef0f5',
+                          boxShadow: pressedBtn === `del_${tx.id}` ? SHD_RECESSED : SHD_RAISED_STD,
+                          transform: pressedBtn === `del_${tx.id}` ? 'scale(0.96)' : 'scale(1)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                          color: '#e05a6a', fontSize: '12px', fontWeight: 600,
+                          transition: 'box-shadow 0.07s, transform 0.07s',
+                        }}
                       >
                         <Trash2 size={13} /> Hapus
                       </button>
@@ -516,93 +658,227 @@ export default function TransactionLogScreen() {
   );
 
   return (
-    <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: '16px 16px 8px', gap: 10 }}>
+    <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: '16px 16px 8px', gap: 0 }}>
+      <style>{`
+        @keyframes tx-expand-in {
+          from { opacity: 0; transform: translateY(-5px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes filter-panel-in {
+          from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+          to   { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+        }
+      `}</style>
       {showPriceEditor && <PriceEditorModal onClose={() => setShowPriceEditor(false)} />}
       {editingTx && (
         <EditModal
           transaction={editingTx}
           onClose={() => setEditingTx(null)}
-          onSave={(items) => updateTransaction(editingTx.id, items)}
+          onSave={(items, remarks, memberId, memberName) => updateTransaction(editingTx.id, items, remarks || undefined, memberId, memberName)}
         />
       )}
 
-      <PriceTicker onOpenPriceEditor={() => setShowPriceEditor(true)} />
+      <div style={{ marginBottom: 8 }}>
+        <PriceTicker onOpenPriceEditor={() => setShowPriceEditor(true)} />
+      </div>
 
-      <DateNavigator selectedDate={selectedDate} onChange={d => { setSelectedDate(d); setExpandedId(null); }} />
+      <div style={{ marginBottom: 10 }}>
+        <DateNavigator selectedDate={selectedDate} onChange={d => { setSelectedDate(d); setExpandedId(null); }} />
+      </div>
 
-      {/* Day Summary */}
-      <div style={{
-        background: '#eef0f5', boxShadow: SHD_RAISED_STRONG,
-        borderRadius: '16px', padding: '12px 16px',
-      }}>
-        <div style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 4 }}>
-          Total {isSameDay(selectedDate, new Date()) ? 'Hari Ini' : MONTHS[selectedDate.getMonth()] + ' ' + selectedDate.getDate()}
-        </div>
-        <div style={{ fontSize: '24px', fontWeight: 700, color: '#2d3142', lineHeight: 1.2 }}>
-          {formatRupiah(searchQuery || filterType !== 'all' ? dayTotal : rawDayTotal)}
-        </div>
-        <div style={{ display: 'flex', gap: 20, marginTop: 6 }}>
-          <div>
-            <div style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5', letterSpacing: '0.06em', textTransform: 'uppercase' }}>Transaksi</div>
-            <div style={{ fontSize: '15px', fontWeight: 700, color: '#4a90d9' }}>
-              {filteredTxs.length}{filteredTxs.length !== dayTxs.length ? `/${dayTxs.length}` : ''}
+      {/* Day Summary Carousel */}
+      <div
+        style={{
+          background: '#eef0f5', boxShadow: SHD_RAISED_STRONG,
+          borderRadius: '16px', marginBottom: 20,
+          overflow: 'hidden', touchAction: 'pan-y', userSelect: 'none',
+        }}
+        onPointerDown={e => { setDragStart(e.clientX); setDragDelta(0); }}
+        onPointerMove={e => {
+          if (dragStart === null) return;
+          const raw = e.clientX - dragStart;
+          const atEdge = (raw < 0 && summarySlide === 2) || (raw > 0 && summarySlide === 0);
+          setDragDelta(atEdge ? raw / 3 : raw);
+        }}
+        onPointerUp={() => {
+          if (dragStart !== null && Math.abs(dragDelta) > 40)
+            setSummarySlide(s => dragDelta < 0 ? Math.min(2, s + 1) : Math.max(0, s - 1));
+          setDragStart(null); setDragDelta(0);
+        }}
+        onPointerLeave={() => { setDragStart(null); setDragDelta(0); }}
+      >
+        {/* Slides track — 300% wide so each slide fills the outer card */}
+        <div style={{
+          display: 'flex', width: '300%',
+          transform: `translateX(calc(-${summarySlide * 33.3333}% + ${dragStart !== null ? dragDelta : 0}px))`,
+          transition: dragStart !== null ? 'none' : 'transform 0.35s cubic-bezier(0.16, 1, 0.3, 1)',
+          willChange: 'transform',
+        }}>
+          {/* Slide 1: Total */}
+          <div style={{ width: '33.3333%', padding: '16px 18px 12px', boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+            <div style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5', letterSpacing: '0.08em', textTransform: 'uppercase', minWidth: 0 }}>
+              Total {isSameDay(selectedDate, new Date()) ? 'Hari Ini' : MONTHS[selectedDate.getMonth()] + ' ' + selectedDate.getDate()}
+            </div>
+            <div style={{ fontSize: '24px', fontWeight: 700, color: '#2d3142', lineHeight: 1.2, flexShrink: 0, textAlign: 'right' }}>
+              {formatRupiah(rawDayTotal)}
             </div>
           </div>
-          {filteredTxs.length > 0 && (
-            <div>
-              <div style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5', letterSpacing: '0.06em', textTransform: 'uppercase' }}>Rata-rata</div>
-              <div style={{ fontSize: '15px', fontWeight: 700, color: '#2d3142' }}>
-                {formatRupiah(Math.round(dayTotal / filteredTxs.length))}
+
+          {/* Slide 2: Top Products */}
+          <div style={{ width: '33.3333%', padding: '16px 18px 12px', boxSizing: 'border-box' }}>
+            <div style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>
+              Terlaris
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5', textTransform: 'uppercase', width: 44, flexShrink: 0 }}>Kedelai</span>
+                {summaryStats.topSoybean ? (
+                  <>
+                    <div style={{ width: 6, height: 6, borderRadius: '50%', background: summaryStats.topSoybean.color, flexShrink: 0 }} />
+                    <span style={{ fontSize: '13px', fontWeight: 700, color: '#2d3142', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{summaryStats.topSoybean.name}</span>
+                    <span style={{ fontSize: '11px', color: '#9a9db5', flexShrink: 0 }}>
+                      {summaryStats.topSoybean.qty % 1 === 0 ? summaryStats.topSoybean.qty : summaryStats.topSoybean.qty.toFixed(1)} {summaryStats.topSoybean.unit}
+                    </span>
+                  </>
+                ) : <span style={{ fontSize: '13px', color: '#c0c4d0' }}>—</span>}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5', textTransform: 'uppercase', width: 44, flexShrink: 0 }}>Plastik</span>
+                {summaryStats.topPlastic ? (
+                  <>
+                    <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#38b2ac', flexShrink: 0 }} />
+                    <span style={{ fontSize: '13px', fontWeight: 700, color: '#2d3142', flex: 1 }}>{summaryStats.topPlastic.size}</span>
+                    <span style={{ fontSize: '11px', color: '#9a9db5', flexShrink: 0 }}>{summaryStats.topPlastic.qty} {summaryStats.topPlastic.unit}</span>
+                  </>
+                ) : <span style={{ fontSize: '13px', color: '#c0c4d0' }}>—</span>}
               </div>
             </div>
-          )}
+          </div>
+
+          {/* Slide 3: Ringkasan */}
+          <div style={{ width: '33.3333%', padding: '16px 18px 12px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
+            <div style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 12 }}>
+              Ringkasan
+            </div>
+            <div style={{ display: 'flex', gap: 24, width: '100%', justifyContent: 'center' }}>
+              <div>
+                <div style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 2 }}>Transaksi</div>
+                <div style={{ fontSize: '20px', fontWeight: 700, color: '#2d3142', lineHeight: 1.2 }}>{dayTxs.length}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 2 }}>Rata-rata</div>
+                <div style={{ fontSize: '14px', fontWeight: 700, color: '#2d3142', lineHeight: 1.2 }}>
+                  {dayTxs.length > 0 ? formatRupiah(Math.round(rawDayTotal / dayTxs.length)) : '—'}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Slide indicators */}
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 5, paddingBottom: 12, paddingTop: 2 }}>
+          {[0, 1, 2].map(i => (
+            <button
+              key={i}
+              onClick={e => { e.stopPropagation(); setSummarySlide(i); }}
+              style={{
+                width: summarySlide === i ? 16 : 5, height: 5,
+                borderRadius: '3px', border: 'none', padding: 0, cursor: 'pointer',
+                background: summarySlide === i ? '#4a90d9' : '#c0c4d0',
+                transition: 'width 0.25s cubic-bezier(0.16, 1, 0.3, 1), background 0.2s',
+              }}
+            />
+          ))}
         </div>
       </div>
 
-      {/* Search + Filters */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <div style={{ position: 'relative' }}>
-          <Search size={14} color="#9a9db5" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
-          <input
-            type="text"
-            placeholder="Cari order, produk, jumlah, catatan..."
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
+      {/* Search + Filter */}
+      <div ref={searchRef} style={{ position: 'relative', marginBottom: 8 }}>
+        <Search size={14} color="#9a9db5" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+        <input
+          type="text"
+          placeholder="Cari order, produk, jumlah, catatan..."
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+          style={{
+            width: '100%', boxSizing: 'border-box',
+            background: '#eef0f5',
+            boxShadow: SHD_RECESSED,
+            borderRadius: '12px', border: 'none', outline: 'none',
+            padding: '11px 60px 11px 36px',
+            fontSize: '13px', color: '#2d3142',
+          }}
+        />
+        {searchQuery && (
+          <button onClick={() => setSearchQuery('')} style={{ position: 'absolute', right: 36, top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 'none', cursor: 'pointer', padding: 2 }}>
+            <X size={13} color="#9a9db5" />
+          </button>
+        )}
+        <button
+          onClick={() => setFilterOpen(o => !o)}
+          onPointerDown={() => setFilterBtnPressed(true)}
+          onPointerUp={() => setFilterBtnPressed(false)}
+          onPointerLeave={() => setFilterBtnPressed(false)}
+          style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 'none', cursor: 'pointer', padding: 4, display: 'flex', alignItems: 'center' }}
+        >
+          <SlidersHorizontal
+            size={15}
+            color={activeFilters.size > 0 ? '#4a90d9' : '#9a9db5'}
             style={{
-              width: '100%', boxSizing: 'border-box',
-              background: '#eef0f5',
-              boxShadow: searchQuery ? SHD_RECESSED : SHD_RAISED_STD,
-              borderRadius: '12px', border: 'none', outline: 'none',
-              padding: '10px 36px',
-              fontSize: '13px', color: '#2d3142',
-              transition: 'box-shadow 0.15s',
+              transform: filterBtnPressed ? 'scale(0.82)' : 'scale(1)',
+              transition: 'transform 0.08s cubic-bezier(0.16, 1, 0.3, 1)',
             }}
           />
-          {searchQuery && (
-            <button onClick={() => setSearchQuery('')} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 'none', cursor: 'pointer', padding: 2 }}>
-              <X size={13} color="#9a9db5" />
-            </button>
-          )}
-        </div>
+        </button>
 
-        <div style={{ display: 'flex', gap: 6 }}>
-          {filterChips.map(chip => (
-            <button
-              key={chip.key}
-              onClick={() => setFilterType(chip.key)}
-              style={{
-                flex: 1, padding: '6px 4px', borderRadius: '9px', border: 'none', cursor: 'pointer',
-                fontSize: '10px', fontWeight: 700, letterSpacing: '0.04em',
-                background: '#eef0f5',
-                color: filterType === chip.key ? '#4a90d9' : '#9a9db5',
-                boxShadow: filterType === chip.key ? SHD_RECESSED : SHD_RAISED_STD,
-                transition: 'all 0.15s',
-              }}
-            >
-              {chip.label}
-            </button>
-          ))}
-        </div>
+        {filterOpen && (
+          <div style={{
+            position: 'absolute', top: 'calc(100% + 5px)', right: 0, zIndex: 50,
+            width: 148,
+            background: '#eef0f5', borderRadius: '11px',
+            boxShadow: SHD_CALENDAR,
+            padding: '7px',
+            animation: 'filter-panel-in 150ms cubic-bezier(0.16, 1, 0.3, 1) both',
+          }}>
+            {([
+              { key: 'soybean' as const, label: 'Kedelai', color: '#52b96a' },
+              { key: 'plastic' as const, label: 'Plastik', color: '#4a90d9' },
+              { key: 'other'   as const, label: 'Lainnya', color: '#9a9db5' },
+            ]).map((opt, i) => {
+              const checked = activeFilters.has(opt.key);
+              return (
+                <button
+                  key={opt.key}
+                  onClick={() => toggleFilter(opt.key)}
+                  style={{
+                    width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+                    padding: '6px 8px', borderRadius: '8px', border: 'none', cursor: 'pointer',
+                    background: '#eef0f5',
+                    boxShadow: checked ? SHD_RECESSED : 'none',
+                    marginBottom: i < 2 ? 3 : 0,
+                    transition: 'box-shadow 0.1s',
+                  }}
+                >
+                  <div style={{
+                    width: 13, height: 13, borderRadius: '4px', flexShrink: 0,
+                    background: '#eef0f5',
+                    boxShadow: checked ? 'inset 1.5px 1.5px 3px #c0c3ca, inset -1.5px -1.5px 3px #fff' : '1.5px 1.5px 3px #c8cad1, -1.5px -1.5px 3px #fff',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    {checked && <Check size={8} color="#4a90d9" strokeWidth={3} />}
+                  </div>
+                  <span style={{ fontSize: '11px', fontWeight: 600, color: checked ? '#2d3142' : '#9a9db5', flex: 1, textAlign: 'left' }}>
+                    {opt.label}
+                  </span>
+                  <div style={{ width: 5, height: 5, borderRadius: '50%', background: checked ? opt.color : 'transparent', flexShrink: 0 }} />
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Transaction List */}
