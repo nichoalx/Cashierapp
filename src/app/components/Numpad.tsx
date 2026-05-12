@@ -8,20 +8,41 @@ interface NumpadProps {
   onComplete: () => void;
   canAdd: boolean;
   canComplete: boolean;
+  allowDecimal?: boolean;
 }
 
-function NumKey({ label, onClick, style, children }: {
+function NumKey({ label, onClick, style, children, disabled }: {
   label?: string;
   onClick: () => void;
   style?: React.CSSProperties;
   children?: React.ReactNode;
+  disabled?: boolean;
 }) {
   const [pressed, setPressed] = useState(false);
+  const isDown = React.useRef(false);
+
+  const handleDown = () => {
+    if (disabled) return;
+    isDown.current = true;
+    setPressed(true);
+  };
+  const handleUp = () => {
+    const fire = isDown.current && !disabled;
+    isDown.current = false;
+    setPressed(false);
+    if (fire) onClick();
+  };
+  const handleLeave = () => {
+    isDown.current = false;
+    setPressed(false);
+  };
+
   return (
     <button
-      onPointerDown={() => setPressed(true)}
-      onPointerUp={() => { setPressed(false); onClick(); }}
-      onPointerLeave={() => setPressed(false)}
+      onPointerDown={handleDown}
+      onPointerUp={handleUp}
+      onPointerLeave={handleLeave}
+      onPointerCancel={handleLeave}
       style={{
         background: pressed ? '#e0e3eb' : '#eef0f5',
         boxShadow: pressed
@@ -29,13 +50,14 @@ function NumKey({ label, onClick, style, children }: {
           : '5px 5px 10px #c8cad1, -4px -4px 9px #ffffff',
         borderRadius: '12px',
         border: 'none',
-        cursor: 'pointer',
+        cursor: disabled ? 'default' : 'pointer',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         transition: 'box-shadow 0.07s, background 0.07s',
         userSelect: 'none',
         WebkitUserSelect: 'none',
+        opacity: disabled ? 0.32 : 1,
         ...style,
       }}
     >
@@ -52,11 +74,30 @@ function ActionKey({ icon, onClick, color, disabled, style }: {
   style?: React.CSSProperties;
 }) {
   const [pressed, setPressed] = useState(false);
+  const isDown = React.useRef(false);
+
+  const handleDown = () => {
+    if (disabled) return;
+    isDown.current = true;
+    setPressed(true);
+  };
+  const handleUp = () => {
+    const fire = isDown.current && !disabled;
+    isDown.current = false;
+    setPressed(false);
+    if (fire) onClick();
+  };
+  const handleLeave = () => {
+    isDown.current = false;
+    setPressed(false);
+  };
+
   return (
     <button
-      onPointerDown={() => !disabled && setPressed(true)}
-      onPointerUp={() => { setPressed(false); if (!disabled) onClick(); }}
-      onPointerLeave={() => setPressed(false)}
+      onPointerDown={handleDown}
+      onPointerUp={handleUp}
+      onPointerLeave={handleLeave}
+      onPointerCancel={handleLeave}
       style={{
         background: color,
         boxShadow: pressed && !disabled
@@ -81,11 +122,17 @@ function ActionKey({ icon, onClick, color, disabled, style }: {
   );
 }
 
-export function Numpad({ value, onChange, onAddItem, onComplete, canAdd, canComplete }: NumpadProps) {
+export function Numpad({ value, onChange, onAddItem, onComplete, canAdd, canComplete, allowDecimal = true }: NumpadProps) {
 
   const handleDigit = (d: string) => {
-    if (d === '.' && value.includes('.')) return;
-    if (value === '0' && d !== '.') { onChange(d); return; }
+    if (d === '.') {
+      if (!allowDecimal || value.includes('.')) return;
+      onChange(value + '.');
+      return;
+    }
+    if (value === '0') { onChange(d); return; }
+    const dotIdx = value.indexOf('.');
+    if (dotIdx !== -1 && value.length - dotIdx - 1 >= 3) return;
     if (value.length >= 10) return;
     onChange(value + d);
   };
@@ -116,7 +163,7 @@ export function Numpad({ value, onChange, onAddItem, onComplete, canAdd, canComp
           <Delete size={17} color="#8a8fa8" />
         </NumKey>
 
-        {/* Rows 2–3, cols 1–3 — auto-placed, flows around col 4 */}
+        {/* Rows 2–3, cols 1–3 */}
         <NumKey label="4" onClick={() => handleDigit('4')} />
         <NumKey label="5" onClick={() => handleDigit('5')} />
         <NumKey label="6" onClick={() => handleDigit('6')} />
@@ -127,7 +174,7 @@ export function Numpad({ value, onChange, onAddItem, onComplete, canAdd, canComp
 
         {/* Row 4, cols 1–3 */}
         <NumKey label="0" onClick={() => handleDigit('0')} style={{ gridColumn: 'span 2' }} />
-        <NumKey label="." onClick={() => handleDigit('.')} />
+        <NumKey label="." onClick={() => handleDigit('.')} disabled={!allowDecimal} />
 
         {/* Tambah — col 4, rows 2–3 */}
         <ActionKey

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Plus, Trash2 } from 'lucide-react';
 import { useAppStore } from '../store';
 
@@ -30,6 +30,11 @@ export function PriceEditorModal({ onClose }: Props) {
     addPlasticSize, removePlasticSize, plasticSizes,
   } = useAppStore();
 
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [onClose]);
   const [newSoyName, setNewSoyName]       = useState('');
   const [newSoyFull, setNewSoyFull]       = useState('');
   const [newSoyPrice, setNewSoyPrice]     = useState('');
@@ -149,7 +154,7 @@ export function PriceEditorModal({ onClose }: Props) {
                     </div>
                     <button
                       onClick={() => removeSoybeanProduct(p.id)}
-                      style={{ color: '#e05a6a', background: 'transparent', border: 'none', padding: 4, cursor: 'pointer' }}
+                      style={{ color: '#d4183d', background: 'transparent', border: 'none', padding: 4, cursor: 'pointer' }}
                     >
                       <Trash2 size={14} />
                     </button>
@@ -269,7 +274,7 @@ export function PriceEditorModal({ onClose }: Props) {
                                 borderRadius: '8px', padding: '4px 8px',
                               }}>
                                 <span style={{ fontSize: '11px', fontWeight: 600, color: '#38b2ac' }}>{ps.size}</span>
-                                <button onClick={() => removePlasticSize(ps.id)} style={{ background: 'transparent', border: 'none', color: '#e05a6a', cursor: 'pointer', padding: 0, lineHeight: 1 }}>
+                                <button onClick={() => removePlasticSize(ps.id)} style={{ background: 'transparent', border: 'none', color: '#d4183d', cursor: 'pointer', padding: 0, lineHeight: 1 }}>
                                   <X size={10} />
                                 </button>
                               </div>

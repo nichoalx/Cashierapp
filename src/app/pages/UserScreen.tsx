@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router';
 import { useAuth } from '../AuthContext';
+import { ButtonSpinner } from '../components/Loader';
 import { LogOut, Clock, Info } from 'lucide-react';
 import { useAppStore, formatRupiah } from '../store';
 
@@ -29,8 +29,7 @@ function formatDateTime(d: Date) {
 }
 
 export default function UserScreen() {
-  const navigate = useNavigate();
-  const { user, logout } = useAuth();
+  const { user, logout, isLoggingOut } = useAuth();
   const { transactions } = useAppStore();
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [logoutPressed, setLogoutPressed]         = useState(false);
@@ -43,10 +42,8 @@ export default function UserScreen() {
   const totalRevenue = transactions.reduce((s, t) => s + t.total, 0);
   const roleColor    = ROLE_COLOR[user.role] ?? '#9a9db5';
 
-  const handleLogout = () => {
-    logout();
-    navigate('/login', { replace: true });
-  };
+  // ProtectedRoot redirects to /login once isAuthenticated becomes false
+  const handleLogout = () => { logout(); };
 
   const neuCard = {
     background: '#eef0f5',
@@ -245,27 +242,35 @@ export default function UserScreen() {
             </button>
             <button
               onClick={handleLogout}
-              onPointerDown={() => setConfirmPressed(true)}
+              disabled={isLoggingOut}
+              onPointerDown={() => !isLoggingOut && setConfirmPressed(true)}
               onPointerUp={() => setConfirmPressed(false)}
               onPointerLeave={() => setConfirmPressed(false)}
               style={{
-                flex: 2, height: 48, borderRadius: '12px', border: 'none', cursor: 'pointer',
+                flex: 2, height: 48, borderRadius: '12px', border: 'none',
+                cursor: isLoggingOut ? 'default' : 'pointer',
                 background: '#e05a6a',
-                boxShadow: confirmPressed ? SHD_ACTION_PRESS : SHD_ACTION_RAISED,
-                transform: confirmPressed ? 'translateY(1px) scale(0.975)' : 'translateY(0) scale(1)',
+                boxShadow: confirmPressed && !isLoggingOut ? SHD_ACTION_PRESS : SHD_ACTION_RAISED,
+                transform: confirmPressed && !isLoggingOut ? 'translateY(1px) scale(0.975)' : 'translateY(0) scale(1)',
                 color: '#fef7f8', fontWeight: 700, fontSize: '13px',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                transition: `box-shadow 90ms ${MOTION_EASE}, transform 90ms ${MOTION_EASE}, background-color 160ms ${MOTION_EASE}`,
+                transition: `box-shadow 90ms ${MOTION_EASE}, transform 90ms ${MOTION_EASE}`,
                 animation: `logout-choice-enter 160ms ${MOTION_EASE} 95ms both`,
                 willChange: 'transform',
+                opacity: isLoggingOut ? 0.8 : 1,
               }}
               className="logout-motion"
             >
-              <LogOut size={16} style={{
-                transform: confirmPressed ? 'translateX(-1px)' : 'translateX(0)',
-                transition: `transform 90ms ${MOTION_EASE}`,
-              }} />
-              Ya, Keluar
+              {isLoggingOut
+                ? <ButtonSpinner />
+                : <>
+                    <LogOut size={16} style={{
+                      transform: confirmPressed ? 'translateX(-1px)' : 'translateX(0)',
+                      transition: `transform 90ms ${MOTION_EASE}`,
+                    }} />
+                    Ya, Keluar
+                  </>
+              }
             </button>
           </div>
         </div>

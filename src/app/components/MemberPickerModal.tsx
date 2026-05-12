@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Search, Phone } from 'lucide-react';
 import { Member } from '../store';
 
@@ -19,6 +19,11 @@ export function MemberPickerModal({ members, onSelect, onClose }: {
   onClose: () => void;
 }) {
   const [search, setSearch] = useState('');
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [onClose]);
   const filtered = members.filter(m =>
     m.name.toLowerCase().includes(search.toLowerCase()) ||
     m.phone.includes(search)

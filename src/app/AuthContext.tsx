@@ -1,4 +1,7 @@
-import { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
+import { createContext, useContext, useState, type ReactNode } from 'react';
+import { useConvexAuth, useQuery } from 'convex/react';
+import { useAuthActions } from '@convex-dev/auth/react';
+import { api } from '../../convex/_generated/api';
 
 export interface AuthUser {
   id: string;
@@ -10,78 +13,41 @@ export interface AuthUser {
 
 interface AuthContextType {
   user: AuthUser | null;
-  pendingEmail: string | null;
-  pendingOtp: string | null;
-  requestOtp: (email: string) => { success: boolean; error?: string };
-  verifyOtp: (code: string) => boolean;
+  isLoading: boolean;
+  isLoggingOut: boolean;
   logout: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-// Single placeholder user — swap for Convex auth later
-const PLACEHOLDER = {
-  id: 'u1',
-  email: 'admin@agromuda.com',
-  name: 'Administrator',
-  role: 'Admin',
-};
-
-function generateOtp(): string {
-  return String(Math.floor(100000 + Math.random() * 900000)); // 6 digits
-}
-
-function loadUser(): AuthUser | null {
-  try {
-    const raw = localStorage.getItem('ama_user');
-    if (!raw) return null;
-    const u = JSON.parse(raw);
-    return { ...u, lastLogin: new Date(u.lastLogin) };
-  } catch { return null; }
-}
-
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<AuthUser | null>(loadUser);
-  const [pendingOtp, setPendingOtp] = useState<string | null>(null);
-  const [pendingEmail, setPendingEmail] = useState<string | null>(null);
+  const { isAuthenticated, isLoading: authLoading } = useConvexAuth();
+  const { signOut } = useAuthActions();
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const convexUser = useQuery(api.users.me, isAuthenticated ? {} : 'skip') as any;
 
-  const requestOtp = useCallback((email: string): { success: boolean; error?: string } => {
-    if (email.toLowerCase() !== PLACEHOLDER.email.toLowerCase()) {
-      return { success: false, error: 'Email tidak terdaftar.' };
-    }
-    const otp = generateOtp();
-    setPendingOtp(otp);
-    setPendingEmail(email);
-    console.log(`%c[OTP] ${otp}`, 'font-size:20px;font-weight:bold;color:#4a90d9;');
-    return { success: true };
-  }, []);
+  // Still loading if auth token is resolving OR user doc hasn't arrived yet
+  const isLoading = authLoading || (isAuthenticated && convexUser === undefined);
 
-  const verifyOtp = useCallback((code: string): boolean => {
-    if (!pendingOtp || !pendingEmail) return false;
-    if (code !== pendingOtp) return false;
-    const authUser: AuthUser = {
-      id: PLACEHOLDER.id,
-      email: PLACEHOLDER.email,
-      name: PLACEHOLDER.name,
-      role: PLACEHOLDER.role,
-      lastLogin: new Date(),
-    };
-    setUser(authUser);
-    localStorage.setItem('ama_user', JSON.stringify(authUser));
-    setPendingOtp(null);
-    setPendingEmail(null);
-    return true;
-  }, [pendingOtp, pendingEmail]);
+  const user: AuthUser | null = convexUser
+    ? {
+        id: convexUser._id as string,
+        email: convexUser.email ?? '',
+        name: convexUser.name ?? 'Nicholas',
+        role: 'Admin',
+        lastLogin: new Date(localStorage.getItem('ama_last_login') ?? Date.now()),
+      }
+    : null;
 
-  const logout = useCallback(() => {
-    setUser(null);
-    localStorage.removeItem('ama_user');
-    setPendingOtp(null);
-    setPendingEmail(null);
-  }, []);
+  const logout = () => {
+    setIsLoggingOut(true);
+    localStorage.removeItem('ama_last_login');
+    void signOut();
+  };
 
   return (
-    <AuthContext.Provider value={{ user, pendingEmail, pendingOtp, requestOtp, verifyOtp, logout }}>
+    <AuthContext.Provider value={{ user, isLoading, isLoggingOut, logout }}>
       {children}
     </AuthContext.Provider>
   );

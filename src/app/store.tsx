@@ -96,6 +96,13 @@ interface AppContextType {
   addStock: (productId: string, quantity: number, productName: string, unit: string) => void;
   addMember: (name: string, phone: string) => void;
   removeMember: (id: string) => void;
+
+  cartItems: TransactionItem[];
+  cartRemarks: string;
+  cartMember: Member | null;
+  setCartItems: (items: TransactionItem[]) => void;
+  setCartRemarks: (remarks: string) => void;
+  setCartMember: (member: Member | null) => void;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -182,6 +189,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [members, setMembers] = useState<Member[]>(INITIAL_MEMBERS);
   const [stockAdditions, setStockAdditions] = useState<StockAddition[]>(INITIAL_STOCK_ADDITIONS);
   const [orderCounter, setOrderCounter] = useState(5);
+  const [cartItems, setCartItems] = useState<TransactionItem[]>([]);
+  const [cartRemarks, setCartRemarks] = useState('');
+  const [cartMember, setCartMember] = useState<Member | null>(null);
 
   const updateSoybeanPrice = useCallback((id: string, price: number) => {
     setSoybeanProducts(p => p.map(x => x.id === id ? { ...x, price } : x));
@@ -266,6 +276,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       updateOtherPrice, updatePlasticBasePrice, addPlasticSize, removePlasticSize,
       addTransaction, updateTransaction, deleteTransaction, addStock,
       addMember, removeMember,
+      cartItems, cartRemarks, cartMember, setCartItems, setCartRemarks, setCartMember,
     }}>
       {children}
     </AppContext.Provider>

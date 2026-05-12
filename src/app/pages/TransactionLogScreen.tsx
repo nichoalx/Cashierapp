@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { Pencil, Trash2, X, Check, ChevronDown, ChevronLeft, ChevronRight, Search, SlidersHorizontal, MessageSquare, User, Receipt } from 'lucide-react';
+import { Pencil, Trash2, X, Check, ChevronDown, ChevronLeft, ChevronRight, Search, SlidersHorizontal, MessageSquare, User, Receipt, FileSpreadsheet, FileDown } from 'lucide-react';
 import { useAppStore, formatRupiah, Transaction, TransactionItem, Member } from '../store';
 import { MemberPickerModal } from '../components/MemberPickerModal';
 import { PriceTicker } from '../components/PriceTicker';
@@ -203,6 +203,12 @@ function EditModal({ transaction, onClose, onSave }: EditModalProps) {
   );
   const [showMemberPicker, setShowMemberPicker] = useState(false);
   const [savePressed, setSavePressed] = useState(false);
+  const [entered, setEntered] = useState(false);
+
+  useEffect(() => {
+    const id = setTimeout(() => setEntered(true), 16);
+    return () => clearTimeout(id);
+  }, []);
 
   const updateQty  = (id: string, val: string) => {
     const qty = parseFloat(val) || 0;
@@ -211,144 +217,154 @@ function EditModal({ transaction, onClose, onSave }: EditModalProps) {
   const removeItem = (id: string) => setItems(prev => prev.filter(i => i.id !== id));
   const newTotal   = items.reduce((s, i) => s + i.total, 0);
 
+  const sheetTransform = !entered
+    ? 'translateY(100%)'
+    : showMemberPicker
+    ? 'scale(0.93)'
+    : 'translateY(0)';
+
   return (
     <>
-      <style>{`
-        @keyframes edit-sheet-up {
-          from { transform: translateY(100%); }
-          to   { transform: translateY(0); }
-        }
-      `}</style>
       <div
         className="fixed inset-0 z-50 flex items-end justify-center"
-        style={{ background: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(4px)' }}
-        onClick={onClose}
-      >
-      <div
-        onClick={e => e.stopPropagation()}
         style={{
-          background: '#eef0f5',
-          boxShadow: '0 -8px 30px rgba(0,0,0,0.12)',
-          borderRadius: '24px 24px 0 0',
-          width: '100%', maxWidth: 430, maxHeight: '80vh',
-          display: 'flex', flexDirection: 'column', overflow: 'hidden',
-          animation: 'edit-sheet-up 280ms cubic-bezier(0.16, 1, 0.3, 1) both',
+          background: 'rgba(0,0,0,0.35)',
+          backdropFilter: showMemberPicker ? 'none' : 'blur(4px)',
+          transition: 'backdrop-filter 0.25s',
         }}
+        onClick={showMemberPicker ? undefined : onClose}
       >
-        <div style={{ padding: '20px 20px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <div style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Edit</div>
-            <h3 style={{ margin: '2px 0 0', color: '#2d3142', fontSize: '18px', fontWeight: 700 }}>Order #{transaction.orderNumber}</h3>
-          </div>
-          <button onClick={onClose} style={{
-            background: '#eef0f5', boxShadow: SHD_RAISED_STD,
-            border: 'none', borderRadius: '11px', width: 36, height: 36,
-            display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-          }}>
-            <X size={16} color="#9a9db5" />
-          </button>
-        </div>
-
-        <div style={{ flex: 1, overflow: 'auto', padding: '0 20px' }}>
-          {items.map(item => (
-            <div key={item.id} style={{
-              display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8,
-              background: '#eef0f5', boxShadow: SHD_RECESSED,
-              borderRadius: '12px', padding: '10px 12px',
-            }}>
-              <div style={{ width: 8, height: 8, borderRadius: '50%', background: item.color, flexShrink: 0 }} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: '13px', fontWeight: 600, color: '#2d3142' }}>{item.productName}</div>
-                <div style={{ fontSize: '11px', color: '#9a9db5' }}>{formatRupiah(item.unitPrice)}/{item.unit}</div>
-              </div>
-              <input
-                type="number"
-                defaultValue={item.quantity}
-                onChange={e => updateQty(item.id, e.target.value)}
-                style={{
-                  width: 72, textAlign: 'right', background: '#eef0f5',
-                  boxShadow: 'inset 2px 2px 5px #c0c3ca, inset -2px -2px 5px #f8f9fc',
-                  borderRadius: '8px', border: 'none', outline: 'none',
-                  padding: '5px 8px', fontSize: '14px', color: '#2d3142',
-                }}
-              />
-              <span style={{ fontSize: '11px', color: '#9a9db5', width: 20 }}>{item.unit}</span>
-              <button onClick={() => removeItem(item.id)} style={{ background: 'transparent', border: 'none', color: '#e05a6a', cursor: 'pointer' }}>
-                <Trash2 size={14} />
-              </button>
+        <div
+          onClick={e => e.stopPropagation()}
+          style={{
+            background: '#eef0f5',
+            boxShadow: '0 -8px 30px rgba(0,0,0,0.12)',
+            borderRadius: '24px 24px 0 0',
+            width: '100%', maxWidth: 430, maxHeight: '80vh',
+            display: 'flex', flexDirection: 'column', overflow: 'hidden',
+            transform: sheetTransform,
+            transformOrigin: 'center bottom',
+            opacity: showMemberPicker ? 0.62 : 1,
+            transition: entered
+              ? 'transform 0.32s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.28s'
+              : 'none',
+          }}
+        >
+          <div style={{ padding: '20px 20px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <div style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Edit</div>
+              <h3 style={{ margin: '2px 0 0', color: '#2d3142', fontSize: '18px', fontWeight: 700 }}>Order #{transaction.orderNumber}</h3>
             </div>
-          ))}
+            <button onClick={onClose} style={{
+              background: '#eef0f5', boxShadow: SHD_RAISED_STD,
+              border: 'none', borderRadius: '11px', width: 36, height: 36,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+            }}>
+              <X size={16} color="#9a9db5" />
+            </button>
+          </div>
 
-          <div style={{ marginTop: 4, marginBottom: 4, display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <div style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5', letterSpacing: '0.08em', textTransform: 'uppercase', marginTop: 4 }}>Catatan &amp; Pembeli</div>
-            <div style={{ position: 'relative' }}>
-              <MessageSquare size={13} color="#9a9db5" style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
-              <input
-                type="text"
-                placeholder="Catatan..."
-                value={editRemarks}
-                onChange={e => setEditRemarks(e.target.value)}
+          <div style={{ flex: 1, overflow: 'auto', padding: '0 20px' }}>
+            {items.map(item => (
+              <div key={item.id} style={{
+                display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8,
+                background: '#eef0f5', boxShadow: SHD_RECESSED,
+                borderRadius: '12px', padding: '10px 12px',
+              }}>
+                <div style={{ width: 8, height: 8, borderRadius: '50%', background: item.color, flexShrink: 0 }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: '13px', fontWeight: 600, color: '#2d3142' }}>{item.productName}</div>
+                  <div style={{ fontSize: '11px', color: '#9a9db5' }}>{formatRupiah(item.unitPrice)}/{item.unit}</div>
+                </div>
+                <input
+                  type="number"
+                  defaultValue={item.quantity}
+                  onChange={e => updateQty(item.id, e.target.value)}
+                  style={{
+                    width: 72, textAlign: 'right', background: '#eef0f5',
+                    boxShadow: 'inset 2px 2px 5px #c0c3ca, inset -2px -2px 5px #f8f9fc',
+                    borderRadius: '8px', border: 'none', outline: 'none',
+                    padding: '5px 8px', fontSize: '14px', color: '#2d3142',
+                  }}
+                />
+                <span style={{ fontSize: '11px', color: '#9a9db5', width: 20 }}>{item.unit}</span>
+                <button onClick={() => removeItem(item.id)} style={{ background: 'transparent', border: 'none', color: '#e05a6a', cursor: 'pointer' }}>
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            ))}
+
+            <div style={{ marginTop: 4, marginBottom: 4, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5', letterSpacing: '0.08em', textTransform: 'uppercase', marginTop: 4 }}>Catatan &amp; Pembeli</div>
+              <div style={{ position: 'relative' }}>
+                <MessageSquare size={13} color="#9a9db5" style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+                <input
+                  type="text"
+                  placeholder="Catatan..."
+                  value={editRemarks}
+                  onChange={e => setEditRemarks(e.target.value)}
+                  style={{
+                    width: '100%', boxSizing: 'border-box',
+                    background: '#eef0f5',
+                    boxShadow: 'inset 2px 2px 5px #c0c3ca, inset -2px -2px 5px #f8f9fc',
+                    borderRadius: '10px', border: 'none', outline: 'none',
+                    padding: '9px 10px 9px 32px',
+                    fontSize: '13px', color: '#2d3142',
+                  }}
+                />
+              </div>
+              <button
+                onClick={() => setShowMemberPicker(true)}
                 style={{
-                  width: '100%', boxSizing: 'border-box',
+                  width: '100%', display: 'flex', alignItems: 'center', gap: 8,
                   background: '#eef0f5',
                   boxShadow: 'inset 2px 2px 5px #c0c3ca, inset -2px -2px 5px #f8f9fc',
-                  borderRadius: '10px', border: 'none', outline: 'none',
-                  padding: '9px 10px 9px 32px',
-                  fontSize: '13px', color: '#2d3142',
+                  borderRadius: '10px', border: 'none', cursor: 'pointer',
+                  padding: '9px 10px',
                 }}
-              />
+              >
+                <User size={13} color={editMember ? '#4a90d9' : '#9a9db5'} style={{ flexShrink: 0 }} />
+                <span style={{ flex: 1, textAlign: 'left', fontSize: '13px', color: editMember ? '#2d3142' : '#9a9db5' }}>
+                  {editMember ? editMember.name : 'Pilih pembeli...'}
+                </span>
+                <ChevronRight size={13} color="#c0c4d0" style={{ flexShrink: 0 }} />
+              </button>
+            </div>
+          </div>
+
+          <div style={{ padding: '16px 20px 20px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 14 }}>
+              <span style={{ fontSize: '13px', color: '#9a9db5' }}>Total Baru</span>
+              <span style={{ fontSize: '16px', fontWeight: 700, color: '#2d3142' }}>{formatRupiah(newTotal)}</span>
             </div>
             <button
-              onClick={() => setShowMemberPicker(true)}
+              onClick={() => { onSave(items, editRemarks, editMember?.id, editMember?.name); onClose(); }}
+              onPointerDown={() => setSavePressed(true)}
+              onPointerUp={() => setSavePressed(false)}
+              onPointerLeave={() => setSavePressed(false)}
               style={{
-                width: '100%', display: 'flex', alignItems: 'center', gap: 8,
-                background: '#eef0f5',
-                boxShadow: 'inset 2px 2px 5px #c0c3ca, inset -2px -2px 5px #f8f9fc',
-                borderRadius: '10px', border: 'none', cursor: 'pointer',
-                padding: '9px 10px',
+                width: '100%', height: 48, borderRadius: '14px', border: 'none',
+                background: '#4a90d9', color: '#fff', fontWeight: 700, fontSize: '14px',
+                boxShadow: savePressed ? SHD_ACTION_PRESS : SHD_ACTION_RAISED,
+                transform: savePressed ? 'scale(0.97)' : 'scale(1)',
+                cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                transition: 'box-shadow 0.07s, transform 0.07s',
               }}
             >
-              <User size={13} color={editMember ? '#4a90d9' : '#9a9db5'} style={{ flexShrink: 0 }} />
-              <span style={{ flex: 1, textAlign: 'left', fontSize: '13px', color: editMember ? '#2d3142' : '#9a9db5' }}>
-                {editMember ? editMember.name : 'Pilih pembeli...'}
-              </span>
-              <ChevronRight size={13} color="#c0c4d0" style={{ flexShrink: 0 }} />
+              <Check size={16} /> Simpan Perubahan
             </button>
-            {showMemberPicker && (
-              <MemberPickerModal
-                members={members}
-                onSelect={m => setEditMember(m)}
-                onClose={() => setShowMemberPicker(false)}
-              />
-            )}
           </div>
-        </div>
-
-        <div style={{ padding: '16px 20px 20px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 14 }}>
-            <span style={{ fontSize: '13px', color: '#9a9db5' }}>Total Baru</span>
-            <span style={{ fontSize: '16px', fontWeight: 700, color: '#2d3142' }}>{formatRupiah(newTotal)}</span>
-          </div>
-          <button
-            onClick={() => { onSave(items, editRemarks, editMember?.id, editMember?.name); onClose(); }}
-            onPointerDown={() => setSavePressed(true)}
-            onPointerUp={() => setSavePressed(false)}
-            onPointerLeave={() => setSavePressed(false)}
-            style={{
-              width: '100%', height: 48, borderRadius: '14px', border: 'none',
-              background: '#4a90d9', color: '#fff', fontWeight: 700, fontSize: '14px',
-              boxShadow: savePressed ? SHD_ACTION_PRESS : SHD_ACTION_RAISED,
-              transform: savePressed ? 'scale(0.97)' : 'scale(1)',
-              cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-              transition: 'box-shadow 0.07s, transform 0.07s',
-            }}
-          >
-            <Check size={16} /> Simpan Perubahan
-          </button>
         </div>
       </div>
-    </div>
+
+      {showMemberPicker && (
+        <MemberPickerModal
+          members={members}
+          onSelect={m => setEditMember(m)}
+          onClose={() => setShowMemberPicker(false)}
+        />
+      )}
     </>
   );
 }
@@ -356,6 +372,33 @@ function EditModal({ transaction, onClose, onSave }: EditModalProps) {
 const SOYBEAN_IDS = ['mrb', 'sbs', 'bh', 'e'];
 const PLASTIC_ID  = 'plastic';
 const OTHER_IDS   = ['tempe', 'dages'];
+
+function exportCSV(txs: Transaction[], date: Date) {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const dateStr = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+  const header = 'Date,Order,Time,Product,Qty,Unit,Unit Price,Item Total,Tx Total,Member,Remarks';
+  const rows = txs.flatMap(tx =>
+    tx.items.map(item => [
+      dateStr,
+      tx.orderNumber,
+      formatTime(tx.timestamp),
+      `"${item.productName}"`,
+      item.quantity,
+      item.unit,
+      item.unitPrice,
+      item.total,
+      tx.total,
+      tx.memberName ? `"${tx.memberName}"` : '',
+      tx.remarks   ? `"${tx.remarks.replace(/"/g, '""')}"` : '',
+    ].join(','))
+  );
+  const blob = new Blob(['﻿' + [header, ...rows].join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = `transaksi-${dateStr}.csv`;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a); URL.revokeObjectURL(url);
+}
 
 export default function TransactionLogScreen() {
   const { transactions, deleteTransaction, updateTransaction } = useAppStore();
@@ -426,30 +469,20 @@ export default function TransactionLogScreen() {
 
   const summaryStats = useMemo(() => {
     const allItems = dayTxs.flatMap(t => t.items);
+    const itemMap: Record<string, { qty: number; label: string; color: string; unit: string; isSoybean: boolean }> = {};
 
-    const soybeanMap: Record<string, { qty: number; name: string; color: string; unit: string }> = {};
     for (const item of allItems) {
-      if (SOYBEAN_IDS.includes(item.productId)) {
-        if (!soybeanMap[item.productId])
-          soybeanMap[item.productId] = { qty: 0, name: item.productName, color: item.color, unit: item.unit };
-        soybeanMap[item.productId].qty += item.quantity;
-      }
+      const key = item.plasticSize ? `plastic-${item.plasticSize}` : item.productId;
+      const label = SOYBEAN_IDS.includes(item.productId)
+        ? item.productShortName
+        : item.plasticSize ? `Plastik ${item.plasticSize}` : item.productName;
+      if (!itemMap[key])
+        itemMap[key] = { qty: 0, label, color: item.color, unit: item.unit, isSoybean: SOYBEAN_IDS.includes(item.productId) };
+      itemMap[key].qty += item.quantity;
     }
-    const topSoybean = Object.values(soybeanMap).sort((a, b) => b.qty - a.qty)[0] ?? null;
 
-    const plasticMap: Record<string, { qty: number; unit: string }> = {};
-    for (const item of allItems) {
-      if (item.productId === PLASTIC_ID && item.plasticSize) {
-        if (!plasticMap[item.plasticSize]) plasticMap[item.plasticSize] = { qty: 0, unit: item.unit };
-        plasticMap[item.plasticSize].qty += item.quantity;
-      }
-    }
-    const topPlasticEntry = Object.entries(plasticMap).sort(([, a], [, b]) => b.qty - a.qty)[0];
-    const topPlastic = topPlasticEntry
-      ? { size: topPlasticEntry[0], qty: topPlasticEntry[1].qty, unit: topPlasticEntry[1].unit }
-      : null;
-
-    return { topSoybean, topPlastic };
+    const top3 = Object.values(itemMap).sort((a, b) => b.qty - a.qty).slice(0, 3);
+    return { top3 };
   }, [dayTxs]);
 
   const rawDayTotal = dayTxs.reduce((s, t) => s + t.total, 0);
@@ -710,76 +743,118 @@ export default function TransactionLogScreen() {
         }}
         onPointerLeave={() => { setDragStart(null); setDragDelta(0); }}
       >
-        {/* Slides track — 300% wide so each slide fills the outer card */}
+        {/* Slides track — 200% wide, 2 slides */}
         <div style={{
           display: 'flex', width: '300%',
-          transform: `translateX(calc(-${summarySlide * 33.3333}% + ${dragStart !== null ? dragDelta : 0}px))`,
+          transform: `translateX(calc(-${(summarySlide * 100 / 3).toFixed(4)}% + ${dragStart !== null ? dragDelta : 0}px))`,
           transition: dragStart !== null ? 'none' : 'transform 0.35s cubic-bezier(0.16, 1, 0.3, 1)',
           willChange: 'transform',
         }}>
-          {/* Slide 1: Total */}
-          <div style={{ width: '33.3333%', padding: '16px 18px 12px', boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-            <div style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5', letterSpacing: '0.08em', textTransform: 'uppercase', minWidth: 0 }}>
-              Total {isSameDay(selectedDate, new Date()) ? 'Hari Ini' : MONTHS[selectedDate.getMonth()] + ' ' + selectedDate.getDate()}
+          {/* Slide 1: Total + Stats */}
+          <div style={{ width: 'calc(100% / 3)', padding: '12px 0 10px', boxSizing: 'border-box', display: 'flex', alignItems: 'stretch' }}>
+            {/* Left: total — centered, dominant */}
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0 14px', minWidth: 0, textAlign: 'center' }}>
+              <div style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 5 }}>
+                {isSameDay(selectedDate, new Date()) ? 'Hari Ini' : `${MONTHS[selectedDate.getMonth()]} ${selectedDate.getDate()}`}
+              </div>
+              <div style={{ fontSize: '20px', fontWeight: 700, color: '#2d3142', lineHeight: 1.1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}>
+                {formatRupiah(rawDayTotal)}
+              </div>
             </div>
-            <div style={{ fontSize: '24px', fontWeight: 700, color: '#2d3142', lineHeight: 1.2, flexShrink: 0, textAlign: 'right' }}>
-              {formatRupiah(rawDayTotal)}
+            {/* Divider */}
+            <div style={{ width: 1, background: 'rgba(200,202,209,0.6)', flexShrink: 0, margin: '8px 0' }} />
+            {/* Right: extras — label above number, left-aligned */}
+            <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', gap: 15, padding: '0 12px', flex: 1 }}>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '8px', fontWeight: 600, color: '#9a9db5', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: 3 }}>Transaksi</div>
+                <div style={{ fontSize: '14px', fontWeight: 700, color: '#2d3142', lineHeight: 1 }}>{dayTxs.length}</div>
+              </div>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '8px', fontWeight: 600, color: '#9a9db5', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: 3 }}>Rata-rata</div>
+                <div style={{ fontSize: '14px', fontWeight: 700, color: '#2d3142', lineHeight: 1 }}>
+                  {dayTxs.length > 0 ? formatRupiah(Math.round(rawDayTotal / dayTxs.length)) : '—'}
+                </div>
+              </div>
             </div>
           </div>
 
-          {/* Slide 2: Top Products */}
-          <div style={{ width: '33.3333%', padding: '16px 18px 12px', boxSizing: 'border-box' }}>
+          {/* Slide 2: Top 3 Items */}
+          <div style={{ width: 'calc(100% / 3)', padding: '16px 18px 12px', boxSizing: 'border-box' }}>
             <div style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>
               Terlaris
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5', textTransform: 'uppercase', width: 44, flexShrink: 0 }}>Kedelai</span>
-                {summaryStats.topSoybean ? (
-                  <>
-                    <div style={{ width: 6, height: 6, borderRadius: '50%', background: summaryStats.topSoybean.color, flexShrink: 0 }} />
-                    <span style={{ fontSize: '13px', fontWeight: 700, color: '#2d3142', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{summaryStats.topSoybean.name}</span>
-                    <span style={{ fontSize: '11px', color: '#9a9db5', flexShrink: 0 }}>
-                      {summaryStats.topSoybean.qty % 1 === 0 ? summaryStats.topSoybean.qty : summaryStats.topSoybean.qty.toFixed(1)} {summaryStats.topSoybean.unit}
+              {summaryStats.top3.length === 0
+                ? <span style={{ fontSize: '12px', color: '#c0c4d0' }}>—</span>
+                : summaryStats.top3.map((item, idx) => (
+                  <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                    <span style={{ fontSize: '9px', fontWeight: 700, color: '#c0c4d0', width: 12, flexShrink: 0, textAlign: 'right' }}>{idx + 1}</span>
+                    <div style={{ width: 5, height: 5, borderRadius: '50%', background: item.color, flexShrink: 0 }} />
+                    <span style={{ fontSize: '13px', fontWeight: 700, color: '#2d3142', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {item.label}
                     </span>
-                  </>
-                ) : <span style={{ fontSize: '13px', color: '#c0c4d0' }}>—</span>}
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5', textTransform: 'uppercase', width: 44, flexShrink: 0 }}>Plastik</span>
-                {summaryStats.topPlastic ? (
-                  <>
-                    <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#38b2ac', flexShrink: 0 }} />
-                    <span style={{ fontSize: '13px', fontWeight: 700, color: '#2d3142', flex: 1 }}>{summaryStats.topPlastic.size}</span>
-                    <span style={{ fontSize: '11px', color: '#9a9db5', flexShrink: 0 }}>{summaryStats.topPlastic.qty} {summaryStats.topPlastic.unit}</span>
-                  </>
-                ) : <span style={{ fontSize: '13px', color: '#c0c4d0' }}>—</span>}
-              </div>
+                    <span style={{ fontSize: '11px', fontWeight: 500, color: '#9a9db5', flexShrink: 0 }}>
+                      {item.qty % 1 === 0 ? item.qty : item.qty.toFixed(1)} {item.unit}
+                    </span>
+                  </div>
+                ))
+              }
             </div>
           </div>
 
-          {/* Slide 3: Ringkasan */}
-          <div style={{ width: '33.3333%', padding: '16px 18px 12px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
-            <div style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 12 }}>
-              Ringkasan
+          {/* Slide 3: Export */}
+          <div style={{ width: 'calc(100% / 3)', padding: '14px 16px 12px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+            <div style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>
+              Export
             </div>
-            <div style={{ display: 'flex', gap: 24, width: '100%', justifyContent: 'center' }}>
-              <div>
-                <div style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 2 }}>Transaksi</div>
-                <div style={{ fontSize: '20px', fontWeight: 700, color: '#2d3142', lineHeight: 1.2 }}>{dayTxs.length}</div>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: 20 }}>
+              {/* Sync to Sheets */}
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5 }}>
+                <button
+                  onClick={e => { e.stopPropagation(); alert('Google Sheets belum dikonfigurasi.'); }}
+                  onPointerDown={() => setPressedBtn('slide3_sync')}
+                  onPointerUp={() => setPressedBtn(null)}
+                  onPointerLeave={() => setPressedBtn(null)}
+                  style={{
+                    width: 36, height: 36, borderRadius: '50%', border: 'none', cursor: 'pointer',
+                    background: '#eef0f5',
+                    boxShadow: pressedBtn === 'slide3_sync' ? SHD_RECESSED : SHD_RAISED_STD,
+                    transform: pressedBtn === 'slide3_sync' ? 'scale(0.93)' : 'scale(1)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    transition: 'box-shadow 0.07s, transform 0.07s',
+                  }}
+                >
+                  <FileSpreadsheet size={14} color="#34a853" />
+                </button>
+                <span style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5', letterSpacing: '0.03em' }}>Sheets</span>
               </div>
-              <div>
-                <div style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 2 }}>Rata-rata</div>
-                <div style={{ fontSize: '14px', fontWeight: 700, color: '#2d3142', lineHeight: 1.2 }}>
-                  {dayTxs.length > 0 ? formatRupiah(Math.round(rawDayTotal / dayTxs.length)) : '—'}
-                </div>
+
+              {/* Export CSV */}
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5 }}>
+                <button
+                  onClick={e => { e.stopPropagation(); exportCSV(dayTxs, selectedDate); }}
+                  onPointerDown={() => setPressedBtn('slide3_csv')}
+                  onPointerUp={() => setPressedBtn(null)}
+                  onPointerLeave={() => setPressedBtn(null)}
+                  style={{
+                    width: 36, height: 36, borderRadius: '50%', border: 'none', cursor: 'pointer',
+                    background: '#eef0f5',
+                    boxShadow: pressedBtn === 'slide3_csv' ? SHD_RECESSED : SHD_RAISED_STD,
+                    transform: pressedBtn === 'slide3_csv' ? 'scale(0.93)' : 'scale(1)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    transition: 'box-shadow 0.07s, transform 0.07s',
+                  }}
+                >
+                  <FileDown size={14} color="#4a90d9" />
+                </button>
+                <span style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5', letterSpacing: '0.03em' }}>CSV</span>
               </div>
             </div>
           </div>
         </div>
 
         {/* Slide indicators */}
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 5, paddingBottom: 12, paddingTop: 2 }}>
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 5, paddingBottom: 10, paddingTop: 4 }}>
           {[0, 1, 2].map(i => (
             <button
               key={i}

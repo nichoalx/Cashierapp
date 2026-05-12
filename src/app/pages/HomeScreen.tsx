@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { X, MessageSquare, User } from 'lucide-react';
-import { useAppStore, formatRupiah, TransactionItem, Member } from '../store';
+import React, { useState, useCallback } from 'react';
+import { X, MessageSquare, User, Check } from 'lucide-react';
+import { useAppStore, formatRupiah, TransactionItem } from '../store';
 import { PriceTicker } from '../components/PriceTicker';
 import { PriceEditorModal } from '../components/PriceEditorModal';
 import { Numpad } from '../components/Numpad';
@@ -22,6 +22,12 @@ function RemarksModal({ value, onSave, onClose }: {
   onClose: () => void;
 }) {
   const [draft, setDraft] = React.useState(value);
+  const [savePressed, setSavePressed] = React.useState(false);
+  React.useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [onClose]);
   return (
     <div
       style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
@@ -44,6 +50,7 @@ function RemarksModal({ value, onSave, onClose }: {
           value={draft}
           onChange={e => setDraft(e.target.value)}
           rows={3}
+          maxLength={280}
           autoFocus
           style={{
             width: '100%', boxSizing: 'border-box',
@@ -56,10 +63,17 @@ function RemarksModal({ value, onSave, onClose }: {
         />
         <button
           onClick={() => { onSave(draft.trim()); onClose(); }}
+          onPointerDown={() => setSavePressed(true)}
+          onPointerUp={() => setSavePressed(false)}
+          onPointerLeave={() => setSavePressed(false)}
           style={{
             width: '100%', height: 48, borderRadius: '12px', border: 'none', cursor: 'pointer',
             background: '#4a90d9',
-            boxShadow: '4px 4px 10px rgba(0,0,0,0.16), -3px -3px 8px rgba(255,255,255,0.5)',
+            boxShadow: savePressed
+              ? 'inset 3px 3px 8px rgba(0,0,0,0.22), inset -2px -2px 5px rgba(255,255,255,0.15)'
+              : '4px 4px 10px rgba(0,0,0,0.16), -3px -3px 8px rgba(255,255,255,0.5)',
+            transform: savePressed ? 'scale(0.97)' : 'scale(1)',
+            transition: 'box-shadow 0.07s, transform 0.07s',
             color: '#fff', fontWeight: 700, fontSize: '14px',
           }}
         >
@@ -71,26 +85,32 @@ function RemarksModal({ value, onSave, onClose }: {
 }
 
 export default function HomeScreen() {
-  const { soybeanProducts, plasticSizes, plasticBasePrice, otherProducts, addTransaction, members } = useAppStore();
+  const {
+    soybeanProducts, plasticSizes, plasticBasePrice, otherProducts, addTransaction, members,
+    cartItems: items, cartRemarks: remarks, cartMember: selectedMember,
+    setCartItems, setCartRemarks, setCartMember,
+  } = useAppStore();
+  const setItems = setCartItems;
+  const setRemarks = setCartRemarks;
+  const setSelectedMember = setCartMember;
   const [step, setStep] = useState<Step>({ type: 'idle' });
   const [inputValue, setInputValue] = useState('0');
-  const [items, setItems] = useState<TransactionItem[]>([]);
   const [showPriceEditor, setShowPriceEditor] = useState(false);
   const [completedFlash, setCompletedFlash] = useState(false);
-  const [remarks, setRemarks] = useState('');
   const [showRemarksModal, setShowRemarksModal] = useState(false);
-  const [selectedMember, setSelectedMember] = useState<Member | null>(null);
   const [showMemberPicker, setShowMemberPicker] = useState(false);
   const [pressedIcon, setPressedIcon] = useState<string | null>(null);
   const [pressedRemove, setPressedRemove] = useState<string | null>(null);
-
+  const pendingTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const phaseTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [pendingComplete, setPendingComplete] = useState<null | { items: TransactionItem[]; remarks: string; memberId?: string; memberName?: string }>(null);
+  const [undoVisible, setUndoVisible] = useState(false);
 
   const selectedProduct = step.type === 'quantity' ? step : null;
 
-  const handleInputChange = (val: string) => setInputValue(val);
+  const handleInputChange = useCallback((val: string) => setInputValue(val), []);
 
-  // Deselect by clicking same button again
-  const handleSoybeanClick = (id: string) => {
+  const handleSoybeanClick = useCallback((id: string) => {
     const p = soybeanProducts.find(x => x.id === id);
     if (!p) return;
     if (step.type === 'quantity' && step.productId === p.id) {
@@ -98,9 +118,9 @@ export default function HomeScreen() {
     }
     setStep({ type: 'quantity', productId: p.id, productName: p.fullName, productShortName: p.name, unit: 'kg', unitPrice: p.price, color: p.color });
     setInputValue('0');
-  };
+  }, [soybeanProducts, step]);
 
-  const handleOtherClick = (id: string) => {
+  const handleOtherClick = useCallback((id: string) => {
     const p = otherProducts.find(x => x.id === id);
     if (!p) return;
     if (step.type === 'quantity' && step.productId === p.id) {
@@ -108,25 +128,25 @@ export default function HomeScreen() {
     }
     setStep({ type: 'quantity', productId: p.id, productName: p.fullName, productShortName: p.name, unit: 'pcs', unitPrice: p.price, color: p.color });
     setInputValue('0');
-  };
+  }, [otherProducts, step]);
 
-  const handlePlasticClick = () => {
+  const handlePlasticClick = useCallback(() => {
     if (step.type === 'plastic_size' || (step.type === 'quantity' && step.productId === 'plastic')) {
       setStep({ type: 'idle' }); setInputValue('0'); return;
     }
     setStep({ type: 'plastic_size' });
-  };
+  }, [step]);
 
-  const handlePlasticSizeClick = (sizeId: string) => {
+  const handlePlasticSizeClick = useCallback((sizeId: string) => {
     const ps = plasticSizes.find(x => x.id === sizeId);
     if (!ps) return;
     setStep({ type: 'quantity', productId: 'plastic', productName: `Plastik ${ps.size}`, productShortName: 'P', unit: 'pcs', unitPrice: plasticBasePrice, color: PLASTIC_COLOR, plasticSize: ps.size });
     setInputValue('0');
-  };
+  }, [plasticSizes, plasticBasePrice]);
 
   const computedTotal = selectedProduct ? selectedProduct.unitPrice * (parseFloat(inputValue) || 0) : 0;
 
-  const handleAddItem = () => {
+  const handleAddItem = useCallback(() => {
     if (!selectedProduct || parseFloat(inputValue) <= 0) return;
     const qty = parseFloat(inputValue);
     const item: TransactionItem = {
@@ -140,24 +160,47 @@ export default function HomeScreen() {
       color: selectedProduct.color,
       plasticSize: selectedProduct.plasticSize,
     };
-    setItems(prev => [...prev, item]);
+    setItems([...items, item]);
     setStep({ type: 'idle' });
     setInputValue('0');
-  };
+  }, [selectedProduct, inputValue, items]);
 
-  const handleComplete = () => {
+  const handleComplete = useCallback(() => {
     if (items.length === 0) return;
-    addTransaction(items, remarks.trim() || undefined, selectedMember?.id, selectedMember?.name);
+    const stash = { items: [...items], remarks: remarks.trim(), memberId: selectedMember?.id, memberName: selectedMember?.name };
+    setPendingComplete(stash);
+    setUndoVisible(false);
     setItems([]);
     setStep({ type: 'idle' });
     setInputValue('0');
     setRemarks('');
     setSelectedMember(null);
     setCompletedFlash(true);
-    setTimeout(() => setCompletedFlash(false), 1500);
-  };
+    if (pendingTimerRef.current) clearTimeout(pendingTimerRef.current);
+    if (phaseTimerRef.current) clearTimeout(phaseTimerRef.current);
+    phaseTimerRef.current = setTimeout(() => setUndoVisible(true), 600);
+    pendingTimerRef.current = setTimeout(() => {
+      addTransaction(stash.items, stash.remarks || undefined, stash.memberId, stash.memberName);
+      setPendingComplete(null);
+      setCompletedFlash(false);
+      setUndoVisible(false);
+    }, 1500);
+  }, [items, remarks, selectedMember, addTransaction]);
 
-  const removeItem = (id: string) => setItems(prev => prev.filter(x => x.id !== id));
+  const handleUndo = useCallback(() => {
+    if (pendingTimerRef.current) clearTimeout(pendingTimerRef.current);
+    if (phaseTimerRef.current) clearTimeout(phaseTimerRef.current);
+    if (pendingComplete) {
+      setItems(pendingComplete.items);
+      setRemarks(pendingComplete.remarks);
+      setSelectedMember(pendingComplete.memberId ? (members.find(m => m.id === pendingComplete.memberId) ?? null) : null);
+    }
+    setPendingComplete(null);
+    setCompletedFlash(false);
+    setUndoVisible(false);
+  }, [pendingComplete, members]);
+
+  const removeItem = useCallback((id: string) => setItems(items.filter(x => x.id !== id)), [items]);
   const transactionTotal = items.reduce((s, i) => s + i.total, 0);
 
   const neuBtn = (color: string, active: boolean): React.CSSProperties => ({
@@ -168,13 +211,13 @@ export default function HomeScreen() {
     borderRadius: '11px',
     border: 'none',
     cursor: 'pointer',
-    padding: '7px 8px',
+    padding: '11px 8px',
     display: 'flex',
     flexDirection: 'column' as const,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 2,
-    transition: 'all 0.15s',
+    transition: 'box-shadow 0.15s, background 0.15s',
     minWidth: 48,
     flex: 1,
   });
@@ -203,93 +246,125 @@ export default function HomeScreen() {
       </div>
 
       {/* Keranjang */}
-      <div style={{
-        flex: '1 1 auto', overflow: 'auto',
-        background: '#eef0f5',
-        boxShadow: 'inset 3px 3px 8px #c8cad1, inset -3px -3px 8px #ffffff',
-        borderRadius: '14px',
-        padding: '11px 13px',
-        display: 'flex', flexDirection: 'column', gap: 0, minHeight: 60, maxHeight: 200,
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: items.length > 0 ? 7 : 0 }}>
+      <div style={{ position: 'relative', flex: '1 1 auto', minHeight: 60, maxHeight: 200 }}>
+      <div
+        role="region"
+        aria-label="Keranjang"
+        style={{
+          overflow: 'auto',
+          background: '#eef0f5',
+          boxShadow: 'inset 3px 3px 8px #c8cad1, inset -3px -3px 8px #ffffff',
+          borderRadius: '14px',
+          padding: '11px 13px',
+          display: 'flex', flexDirection: 'column', gap: 0, height: '100%', boxSizing: 'border-box',
+        }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
           <span style={{ fontSize: '9px', color: '#9a9db5', letterSpacing: '0.08em', fontWeight: 600 }}>
             KERANJANG{items.length > 0 ? ` (${items.length})` : ''}
           </span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <button
+              aria-label="Tambah catatan"
               onClick={() => setShowRemarksModal(true)}
               onPointerDown={() => setPressedIcon('remarks')}
               onPointerUp={() => setPressedIcon(null)}
               onPointerLeave={() => setPressedIcon(null)}
-              style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 5, display: 'flex', alignItems: 'center' }}
+              style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '10px 8px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}
             >
               <MessageSquare size={15} color={remarks ? '#4a90d9' : '#c0c4d0'} style={{ transform: pressedIcon === 'remarks' ? 'scale(0.75)' : 'scale(1)', transition: 'transform 0.08s cubic-bezier(0.16, 1, 0.3, 1)' }} />
+              <span style={{ fontSize: '8px', color: remarks ? '#4a90d9' : '#c0c4d0', lineHeight: 1, userSelect: 'none' }}>Catatan</span>
             </button>
             <button
+              aria-label="Pilih pembeli"
               onClick={() => setShowMemberPicker(true)}
               onPointerDown={() => setPressedIcon('member')}
               onPointerUp={() => setPressedIcon(null)}
               onPointerLeave={() => setPressedIcon(null)}
-              style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 5, display: 'flex', alignItems: 'center' }}
+              style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '10px 8px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}
             >
               <User size={15} color={selectedMember ? '#4a90d9' : '#c0c4d0'} style={{ transform: pressedIcon === 'member' ? 'scale(0.75)' : 'scale(1)', transition: 'transform 0.08s cubic-bezier(0.16, 1, 0.3, 1)' }} />
+              <span style={{ fontSize: '8px', color: selectedMember ? '#4a90d9' : '#c0c4d0', lineHeight: 1, userSelect: 'none' }}>Pembeli</span>
             </button>
-            {items.length > 0 && (
-              <span style={{ fontSize: '13px', fontWeight: 700, color: '#2d3142', marginLeft: 2 }}>{formatRupiah(transactionTotal)}</span>
-            )}
           </div>
         </div>
+
+        {selectedMember && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 5 }}>
+            <User size={9} color="#4a90d9" style={{ flexShrink: 0 }} />
+            <span style={{ fontSize: '10px', color: '#4a90d9', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{selectedMember.name}</span>
+          </div>
+        )}
 
         {items.length === 0 && !completedFlash ? (
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <span style={{ fontSize: '11px', color: '#c0c4d0' }}>Pilih produk & masukkan jumlah</span>
           </div>
         ) : completedFlash ? (
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, animation: 'flash-in 200ms cubic-bezier(0.16, 1, 0.3, 1) both' }}>
-            <span style={{ fontSize: '18px' }}>✓</span>
-            <span style={{ fontSize: '13px', fontWeight: 700, color: '#52b96a' }}>Transaksi Berhasil!</span>
-          </div>
+          !undoVisible ? (
+            <div role="alert" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, animation: 'flash-in 200ms cubic-bezier(0.16, 1, 0.3, 1) both' }}>
+              <div style={{ width: 22, height: 22, borderRadius: '50%', background: '#52b96a', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <Check size={13} color="#fff" strokeWidth={3} />
+              </div>
+              <span style={{ fontSize: '13px', fontWeight: 700, color: '#52b96a' }}>Transaksi Berhasil!</span>
+            </div>
+          ) : (
+            <div role="status" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, animation: 'flash-in 180ms cubic-bezier(0.16, 1, 0.3, 1) both' }}>
+              <span style={{ fontSize: '11px', color: '#9a9db5' }}>Transaksi disimpan</span>
+              <span style={{ fontSize: '11px', color: '#c0c4d0' }}>·</span>
+              <button
+                onClick={handleUndo}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '11px', fontWeight: 600, color: '#4a90d9', padding: 0 }}
+              >
+                Batalkan?
+              </button>
+            </div>
+          )
         ) : (
           <>
+            <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
             {items.map(item => (
-              <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 5, animation: 'cart-item-in 160ms cubic-bezier(0.16, 1, 0.3, 1) both' }}>
+              <li key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 5, animation: 'cart-item-in 160ms cubic-bezier(0.16, 1, 0.3, 1) both' }}>
                 <div style={{ width: 6, height: 6, borderRadius: '50%', background: item.color, flexShrink: 0 }} />
-                <span style={{ fontSize: '11px', fontWeight: 600, color: '#2d3142', flex: 1 }}>
+                <span style={{ fontSize: '11px', fontWeight: 600, color: '#2d3142', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
                   {item.productShortName}{item.plasticSize ? ` ${item.plasticSize}` : ''}
                 </span>
-                <span style={{ fontSize: '10px', color: '#7a7d96' }}>
+                <span style={{ fontSize: '10px', color: '#9a9db5' }}>
                   {item.quantity % 1 === 0 ? item.quantity : item.quantity.toFixed(1)} {item.unit}
                 </span>
                 <span style={{ fontSize: '11px', fontWeight: 700, color: '#4a4e69', minWidth: 72, textAlign: 'right' }}>
                   {formatRupiah(item.total)}
                 </span>
                 <button
+                  aria-label={`Hapus ${item.productShortName}`}
                   onClick={() => removeItem(item.id)}
                   onPointerDown={() => setPressedRemove(item.id)}
                   onPointerUp={() => setPressedRemove(null)}
                   onPointerLeave={() => setPressedRemove(null)}
-                  style={{ background: 'transparent', border: 'none', color: '#e05a6a', cursor: 'pointer', padding: 2 }}
+                  style={{ background: 'transparent', border: 'none', color: '#d4183d', cursor: 'pointer', padding: '16px 8px' }}
                 >
                   <X size={11} style={{ transform: pressedRemove === item.id ? 'scale(0.72)' : 'scale(1)', transition: 'transform 0.08s cubic-bezier(0.16, 1, 0.3, 1)' }} />
                 </button>
-              </div>
+              </li>
             ))}
+            </ul>
             {/* Remarks in cart */}
             {remarks && (
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 5, marginTop: 4, paddingTop: 5, borderTop: '1px solid rgba(0,0,0,0.05)' }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 5, marginTop: 4, marginBottom: 4, paddingTop: 5, borderTop: '1px solid rgba(0,0,0,0.05)' }}>
                 <MessageSquare size={10} color="#9a9db5" style={{ marginTop: 1, flexShrink: 0 }} />
-                <span style={{ fontSize: '10px', color: '#7a7d96', fontStyle: 'italic' }}>{remarks}</span>
+                <span style={{ fontSize: '10px', color: '#9a9db5', fontStyle: 'italic', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const, flex: 1, minWidth: 0 }}>{remarks}</span>
               </div>
             )}
-            {/* Member in cart */}
-            {selectedMember && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 4, paddingTop: 5, borderTop: remarks ? 'none' : '1px solid rgba(0,0,0,0.05)' }}>
-                <User size={10} color="#4a90d9" style={{ flexShrink: 0 }} />
-                <span style={{ fontSize: '10px', color: '#4a90d9', fontWeight: 600 }}>{selectedMember.name}</span>
-              </div>
-            )}
+            {/* Cart total */}
+            <div style={{ marginTop: 'auto', paddingTop: 7, borderTop: '1px solid rgba(0,0,0,0.07)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+              <span style={{ fontSize: '9px', color: '#9a9db5', letterSpacing: '0.08em', fontWeight: 600 }}>TOTAL</span>
+              <span style={{ fontSize: '14px', fontWeight: 700, color: '#2d3142' }}>{formatRupiah(transactionTotal)}</span>
+            </div>
           </>
         )}
+      </div>
+      {items.length > 3 && (
+        <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 28, background: 'linear-gradient(to bottom, transparent, #eef0f5)', pointerEvents: 'none', borderRadius: '0 0 14px 14px' }} />
+      )}
       </div>
 
       {/* BOTTOM ZONE */}
@@ -313,7 +388,7 @@ export default function HomeScreen() {
                   </div>
                 </>
               ) : (
-                <div style={{ fontSize: '10px', color: '#2e3550' }}>
+                <div style={{ fontSize: '10px', color: '#3a4060' }}>
                   {step.type === 'plastic_size' ? '← pilih ukuran' : 'Unit: —'}
                 </div>
               )}
@@ -338,17 +413,17 @@ export default function HomeScreen() {
             <span style={{
               display: 'inline-block',
               color: selectedProduct ? '#7ee8a2' : '#2a3050',
-              animation: 'cursor-blink 1s step-end infinite',
+              animation: step.type === 'idle' ? 'none' : 'cursor-blink 1s step-end infinite',
               fontSize: '30px', lineHeight: 1, marginBottom: '2px',
             }}>|</span>
           </div>
         </div>
 
         {/* Product Selection */}
-        <div style={{ background: '#eef0f5', boxShadow: '5px 5px 12px #c8cad1, -5px -5px 12px #ffffff', borderRadius: '16px', padding: '12px 12px 12px' }}>
+        <div style={{ background: '#eef0f5', boxShadow: '5px 5px 12px #c8cad1, -5px -5px 12px #ffffff', borderRadius: '16px', padding: '12px' }}>
           <div style={{ marginBottom: 9 }}>
-            <div style={{ fontSize: '8px', color: '#b8bbd0', letterSpacing: '0.06em', marginBottom: 7 }}>KEDELAI</div>
-            <div style={{ display: 'flex', gap: 7 }}>
+            <div style={{ fontSize: '8px', color: '#9a9db5', letterSpacing: '0.06em', marginBottom: 7 }}>KEDELAI</div>
+            <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
               {soybeanProducts.map(p => {
                 const isActive = step.type === 'quantity' && step.productId === p.id;
                 return (
@@ -363,14 +438,14 @@ export default function HomeScreen() {
             </div>
           </div>
           <div>
-            <div style={{ fontSize: '8px', color: '#b8bbd0', letterSpacing: '0.06em', marginBottom: 7 }}>LAINNYA</div>
-            <div style={{ display: 'flex', gap: 7 }}>
+            <div style={{ fontSize: '8px', color: '#9a9db5', letterSpacing: '0.06em', marginBottom: 7 }}>LAINNYA</div>
+            <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
               <button
                 onClick={handlePlasticClick}
                 style={neuBtn(PLASTIC_COLOR, step.type === 'plastic_size' || (step.type === 'quantity' && step.productId === 'plastic'))}
               >
                 <span style={{ fontSize: '12px', fontWeight: 700, color: (step.type === 'plastic_size' || (step.type === 'quantity' && step.productId === 'plastic')) ? '#fff' : PLASTIC_COLOR }}>P</span>
-                <span style={{ fontSize: '8px', color: '#9a9db5' }}>Plastik</span>
+                <span style={{ fontSize: '8px', color: (step.type === 'plastic_size' || (step.type === 'quantity' && step.productId === 'plastic')) ? 'rgba(255,255,255,0.75)' : '#9a9db5' }}>Plastik</span>
               </button>
               {otherProducts.map(p => {
                 const isActive = step.type === 'quantity' && step.productId === p.id;
@@ -390,10 +465,10 @@ export default function HomeScreen() {
         {/* Plastic size grid */}
         {step.type === 'plastic_size' && (
           <div style={{ background: '#eef0f5', boxShadow: '5px 5px 12px #c8cad1, -5px -5px 12px #ffffff', borderRadius: '14px', padding: '10px', animation: 'panel-in 180ms cubic-bezier(0.16, 1, 0.3, 1) both' }}>
-            <div style={{ fontSize: '8px', color: '#b8bbd0', letterSpacing: '0.06em', marginBottom: 7 }}>UKURAN PLASTIK</div>
+            <div style={{ fontSize: '8px', color: '#9a9db5', letterSpacing: '0.06em', marginBottom: 7 }}>UKURAN PLASTIK</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
               {plasticSizes.map(ps => (
-                <button key={ps.id} onClick={() => handlePlasticSizeClick(ps.id)} style={{ borderRadius: '9px', padding: '7px 4px', border: 'none', cursor: 'pointer', background: '#eef0f5', boxShadow: '3px 3px 7px #c8cad1, -3px -3px 7px #ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <button key={ps.id} onClick={() => handlePlasticSizeClick(ps.id)} style={{ borderRadius: '9px', padding: '16px 8px', minHeight: 44, border: 'none', cursor: 'pointer', background: '#eef0f5', boxShadow: '3px 3px 7px #c8cad1, -3px -3px 7px #ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <span style={{ fontSize: '11px', fontWeight: 700, color: PLASTIC_COLOR }}>{ps.size}</span>
                 </button>
               ))}
@@ -409,6 +484,7 @@ export default function HomeScreen() {
           onComplete={handleComplete}
           canAdd={step.type === 'quantity' && parseFloat(inputValue) > 0}
           canComplete={items.length > 0}
+          allowDecimal={step.type !== 'quantity' || step.unit !== 'pcs'}
         />
       </div>
 
@@ -444,3 +520,4 @@ export default function HomeScreen() {
     </div>
   );
 }
+    

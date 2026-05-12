@@ -1,8 +1,8 @@
-import React, { useEffect } from 'react';
-import { createBrowserRouter, Outlet, Navigate, useNavigate, useLocation } from 'react-router';
+import { createBrowserRouter, Outlet, Navigate, useLocation } from 'react-router';
 import { AnimatePresence, motion, MotionConfig } from 'motion/react';
 import { BottomNav } from './components/BottomNav';
 import { useAuth } from './AuthContext';
+import { BouncingLoader } from './components/Loader';
 import HomeScreen from './pages/HomeScreen';
 import TransactionLogScreen from './pages/TransactionLogScreen';
 import StockScreen from './pages/StockScreen';
@@ -13,8 +13,9 @@ import LoginScreen from './pages/LoginScreen';
 import AppErrorScreen from './pages/AppErrorScreen';
 
 function ProtectedRoot() {
-  const { user } = useAuth();
+  const { user, isLoading } = useAuth();
   const location = useLocation();
+  if (isLoading) return <BouncingLoader />;
   if (!user) return <Navigate to="/login" replace />;
   return (
     <MotionConfig reducedMotion="user">
@@ -43,19 +44,16 @@ function ProtectedRoot() {
   );
 }
 
+// localStorage so splash only shows on true first visit (not every new tab)
 const SPLASH_KEY = 'ama_splash_shown';
 
 function AppShell() {
-  const navigate = useNavigate();
   const location = useLocation();
 
-  useEffect(() => {
-    const alreadyShown = sessionStorage.getItem(SPLASH_KEY);
-    if (!alreadyShown && location.pathname !== '/splash') {
-      sessionStorage.setItem(SPLASH_KEY, '1');
-      navigate('/splash', { replace: true });
-    }
-  }, []);
+  if (!localStorage.getItem(SPLASH_KEY) && location.pathname !== '/splash') {
+    localStorage.setItem(SPLASH_KEY, '1');
+    return <Navigate to="/splash" replace />;
+  }
 
   return (
     <div style={{
@@ -81,11 +79,6 @@ function AppShell() {
       </div>
     </div>
   );
-}
-
-function RootRedirect() {
-  const { user } = useAuth();
-  return <Navigate to={user ? '/' : '/login'} replace />;
 }
 
 export const router = createBrowserRouter([
