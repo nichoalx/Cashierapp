@@ -12,8 +12,6 @@ build/
 *.tsbuildinfo
 graphify-out/
 
-# Convex
-convex/_generated/
 
 # Claude / AI tools
 .agents/
