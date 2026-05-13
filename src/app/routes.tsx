@@ -44,14 +44,16 @@ function ProtectedRoot() {
   );
 }
 
-// localStorage so splash only shows on true first visit (not every new tab)
-const SPLASH_KEY = 'ama_splash_shown';
+// Show the splash once per browser/app load, similar to a native cold start.
+let hasShownSplashThisLoad = false;
 
 function AppShell() {
   const location = useLocation();
 
-  if (!localStorage.getItem(SPLASH_KEY) && location.pathname !== '/splash') {
-    localStorage.setItem(SPLASH_KEY, '1');
+  if (location.pathname === '/splash') {
+    hasShownSplashThisLoad = true;
+  } else if (!hasShownSplashThisLoad) {
+    hasShownSplashThisLoad = true;
     return <Navigate to="/splash" replace />;
   }
 
