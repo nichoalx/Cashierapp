@@ -24,8 +24,8 @@ const neuInput: React.CSSProperties = {
 
 export function PriceEditorModal({ onClose }: Props) {
   const {
-    soybeanProducts, plasticBasePrice, otherProducts,
-    updateSoybeanPrice, updateOtherPrice, updatePlasticBasePrice,
+    soybeanProducts, plasticBasePrice, otherProducts, eceranPrice,
+    updateSoybeanPrice, updateOtherPrice, updatePlasticBasePrice, updateEceranPrice,
     addSoybeanProduct, removeSoybeanProduct,
     addPlasticSize, removePlasticSize, plasticSizes,
   } = useAppStore();
@@ -160,6 +160,28 @@ export function PriceEditorModal({ onClose }: Props) {
                     </button>
                   </div>
                 ))}
+
+                {/* Eceran price — fixed modifier, not a product */}
+                <div style={{ height: 1, background: '#dde0ea', margin: '2px 0' }} />
+                <div className="flex items-center gap-3">
+                  <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#9b6dff', flexShrink: 0 }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: '11px', color: '#9a9db5' }}>Harga Eceran</div>
+                    <div style={{ fontSize: '13px', fontWeight: 600, color: '#2d3142' }}>E — Semua Merek</div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ fontSize: '11px', color: '#9a9db5' }}>Rp</span>
+                    <input
+                      type="number"
+                      defaultValue={eceranPrice}
+                      key={eceranPrice}
+                      style={{ ...neuInput, width: 100, textAlign: 'right' }}
+                      onBlur={e => updateEceranPrice(parseFloat(e.target.value) || eceranPrice)}
+                    />
+                    <span style={{ fontSize: '11px', color: '#9a9db5' }}>/kg</span>
+                  </div>
+                </div>
+                <div style={{ height: 1, background: '#dde0ea', margin: '2px 0' }} />
 
                 {/* Add new soybean — collapsed by default */}
                 {showAddSoy ? (

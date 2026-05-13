@@ -6,10 +6,11 @@ interface PriceTickerProps {
 }
 
 export function PriceTicker({ onOpenPriceEditor }: PriceTickerProps) {
-  const { soybeanProducts, otherProducts, plasticSizes } = useAppStore();
+  const { soybeanProducts, otherProducts, plasticSizes, eceranPrice } = useAppStore();
 
   const items = [
     ...soybeanProducts.map(p => ({ label: p.name, price: `${formatRupiah(p.price)}/kg`, color: p.color })),
+    { label: 'E', price: `${formatRupiah(eceranPrice)}/kg`, color: '#9b6dff' },
     ...otherProducts.map(p => ({ label: p.name, price: `${formatRupiah(p.price)}/pcs`, color: p.color })),
     ...plasticSizes.map(p => ({ label: `P ${p.size}`, price: `${formatRupiah(p.price)}/pcs`, color: '#38b2ac' })),
   ];

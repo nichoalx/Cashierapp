@@ -9,7 +9,8 @@ import { MemberPickerModal } from '../components/MemberPickerModal';
 type Step =
   | { type: 'idle' }
   | { type: 'plastic_size' }
-  | { type: 'quantity'; productId: string; productName: string; productShortName: string; unit: string; unitPrice: number; color: string; plasticSize?: string };
+  | { type: 'eceran_brand' }
+  | { type: 'quantity'; productId: string; productName: string; productShortName: string; unit: string; unitPrice: number; color: string; plasticSize?: string; isSoybean?: boolean; isEceran?: boolean };
 
 function genId() { return Math.random().toString(36).slice(2, 10); }
 
@@ -86,7 +87,7 @@ function RemarksModal({ value, onSave, onClose }: {
 
 export default function HomeScreen() {
   const {
-    soybeanProducts, plasticSizes, plasticBasePrice, otherProducts, addTransaction, members,
+    soybeanProducts, plasticSizes, plasticBasePrice, otherProducts, addTransaction, members, eceranPrice,
     cartItems: items, cartRemarks: remarks, cartMember: selectedMember,
     setCartItems, setCartRemarks, setCartMember,
   } = useAppStore();
@@ -110,13 +111,22 @@ export default function HomeScreen() {
 
   const handleInputChange = useCallback((val: string) => setInputValue(val), []);
 
+  const handleEceranClick = useCallback(() => {
+    if (step.type === 'eceran_brand' || (step.type === 'quantity' && step.isEceran)) {
+      setStep({ type: 'idle' }); setInputValue('0'); return;
+    }
+    setStep({ type: 'eceran_brand' });
+    setInputValue('0');
+  }, [step]);
+
   const handleSoybeanClick = useCallback((id: string) => {
     const p = soybeanProducts.find(x => x.id === id);
     if (!p) return;
     if (step.type === 'quantity' && step.productId === p.id) {
       setStep({ type: 'idle' }); setInputValue('0'); return;
     }
-    setStep({ type: 'quantity', productId: p.id, productName: p.fullName, productShortName: p.name, unit: 'kg', unitPrice: p.price, color: p.color });
+    const isEceran = step.type === 'eceran_brand';
+    setStep({ type: 'quantity', productId: p.id, productName: p.fullName, productShortName: p.name, unit: 'kg', unitPrice: p.price, color: p.color, isSoybean: true, isEceran });
     setInputValue('0');
   }, [soybeanProducts, step]);
 
@@ -144,26 +154,31 @@ export default function HomeScreen() {
     setInputValue('0');
   }, [plasticSizes, plasticBasePrice]);
 
-  const computedTotal = selectedProduct ? selectedProduct.unitPrice * (parseFloat(inputValue) || 0) : 0;
+  const effectivePrice = selectedProduct
+    ? (selectedProduct.isSoybean && selectedProduct.isEceran ? eceranPrice : selectedProduct.unitPrice)
+    : 0;
+  const computedTotal = selectedProduct ? effectivePrice * (parseFloat(inputValue) || 0) : 0;
 
   const handleAddItem = useCallback(() => {
     if (!selectedProduct || parseFloat(inputValue) <= 0) return;
     const qty = parseFloat(inputValue);
+    const useEceran = !!(selectedProduct.isSoybean && selectedProduct.isEceran);
+    const price = useEceran ? eceranPrice : selectedProduct.unitPrice;
     const item: TransactionItem = {
       id: genId(),
       productId: selectedProduct.productId,
-      productName: selectedProduct.productName,
-      productShortName: selectedProduct.productShortName,
+      productName: useEceran ? `Eceran (${selectedProduct.productShortName})` : selectedProduct.productName,
+      productShortName: useEceran ? `${selectedProduct.productShortName} · E` : selectedProduct.productShortName,
       quantity: qty, unit: selectedProduct.unit,
-      unitPrice: selectedProduct.unitPrice,
-      total: selectedProduct.unitPrice * qty,
-      color: selectedProduct.color,
+      unitPrice: price,
+      total: price * qty,
+      color: useEceran ? '#9b6dff' : selectedProduct.color,
       plasticSize: selectedProduct.plasticSize,
     };
     setItems([...items, item]);
     setStep({ type: 'idle' });
     setInputValue('0');
-  }, [selectedProduct, inputValue, items]);
+  }, [selectedProduct, inputValue, items, eceranPrice]);
 
   const handleComplete = useCallback(() => {
     if (items.length === 0) return;
@@ -383,13 +398,13 @@ export default function HomeScreen() {
               {selectedProduct ? (
                 <>
                   <div style={{ fontSize: '9px', color: '#3a4060', letterSpacing: '0.1em', marginBottom: 1 }}>UNIT</div>
-                  <div style={{ fontSize: '12px', fontWeight: 700, color: selectedProduct.color }}>
+                  <div style={{ fontSize: '12px', fontWeight: 700, color: selectedProduct.isEceran ? '#9b6dff' : selectedProduct.color }}>
                     {selectedProduct.unit}
                   </div>
                 </>
               ) : (
                 <div style={{ fontSize: '10px', color: '#3a4060' }}>
-                  {step.type === 'plastic_size' ? '← pilih ukuran' : 'Unit: —'}
+                  {step.type === 'plastic_size' || step.type === 'eceran_brand' ? '← pilih merek' : 'Unit: —'}
                 </div>
               )}
             </div>
@@ -424,10 +439,24 @@ export default function HomeScreen() {
           <div style={{ marginBottom: 9 }}>
             <div style={{ fontSize: '8px', color: '#9a9db5', letterSpacing: '0.06em', marginBottom: 7 }}>KEDELAI</div>
             <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
+              {/* Eceran modifier button */}
+              {(() => {
+                const eActive = step.type === 'eceran_brand' || (step.type === 'quantity' && step.isEceran);
+                return (
+                  <button onClick={handleEceranClick} style={neuBtn('#9b6dff', eActive)}>
+                    <span style={{ fontSize: '12px', fontWeight: 700, color: eActive ? '#fff' : '#9b6dff' }}>E</span>
+                    <span style={{ fontSize: '8px', color: eActive ? 'rgba(255,255,255,0.75)' : '#9a9db5', whiteSpace: 'nowrap' }}>
+                      {formatRupiah(eceranPrice).replace('Rp ', '')}
+                    </span>
+                  </button>
+                );
+              })()}
               {soybeanProducts.map(p => {
                 const isActive = step.type === 'quantity' && step.productId === p.id;
+                const withEceran = isActive && !!(step.type === 'quantity' && step.isEceran);
+                const btnColor = withEceran ? '#9b6dff' : p.color;
                 return (
-                  <button key={p.id} onClick={() => handleSoybeanClick(p.id)} style={neuBtn(p.color, isActive)}>
+                  <button key={p.id} onClick={() => handleSoybeanClick(p.id)} style={neuBtn(btnColor, isActive)}>
                     <span style={{ fontSize: '12px', fontWeight: 700, color: isActive ? '#fff' : p.color }}>{p.name}</span>
                     <span style={{ fontSize: '8px', color: isActive ? 'rgba(255,255,255,0.75)' : '#9a9db5', whiteSpace: 'nowrap' }}>
                       {formatRupiah(p.price).replace('Rp ', '')}
@@ -485,6 +514,7 @@ export default function HomeScreen() {
           canAdd={step.type === 'quantity' && parseFloat(inputValue) > 0}
           canComplete={items.length > 0}
           allowDecimal={step.type !== 'quantity' || step.unit !== 'pcs'}
+          maxValue={step.type === 'quantity' && step.isEceran ? 10 : undefined}
         />
       </div>
 

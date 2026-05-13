@@ -1,13 +1,12 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { Plus, X, ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
-import { useAppStore, formatRupiah, StockAddition } from '../store';
+import { useAppStore, StockAddition } from '../store';
 import { PriceTicker } from '../components/PriceTicker';
 import { PriceEditorModal } from '../components/PriceEditorModal';
 
-const SHD_RAISED_STD    = '4px 4px 9px #c8cad1, -4px -4px 9px #ffffff';
-const SHD_RAISED_LIST   = '3px 3px 7px #c8cad1, -3px -3px 7px rgba(255,255,255,0.92)';
-const SHD_RAISED_STRONG = '5px 5px 12px #c8cad1, -5px -5px 12px #ffffff';
-const SHD_RECESSED      = 'inset 3px 3px 7px #c8cad1, inset -3px -3px 7px #ffffff';
+const SHD_RAISED_STD  = '4px 4px 9px #c8cad1, -4px -4px 9px #ffffff';
+const SHD_RAISED_LIST = '3px 3px 7px #c8cad1, -3px -3px 7px rgba(255,255,255,0.92)';
+const SHD_RECESSED    = 'inset 3px 3px 7px #c8cad1, inset -3px -3px 7px #ffffff';
 const SHD_ACTION_RAISED = '4px 4px 10px rgba(0,0,0,0.16), -3px -3px 8px rgba(255,255,255,0.5)';
 const SHD_ACTION_PRESS  = 'inset 3px 3px 8px rgba(0,0,0,0.22), inset -2px -2px 5px rgba(255,255,255,0.15)';
 const SHD_CALENDAR      = '8px 8px 18px #c0c3ca, -6px -6px 14px #ffffff';
@@ -15,8 +14,8 @@ const SHD_CALENDAR      = '8px 8px 18px #c0c3ca, -6px -6px 14px #ffffff';
 function isSameDay(a: Date, b: Date) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
-const MONTHS     = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-const DAYS_SHORT = ['Su','Mo','Tu','We','Th','Fr','Sa'];
+const MONTHS     = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+const DAYS_SHORT = ['Min','Sen','Sel','Rab','Kam','Jum','Sab'];
 
 // ─────────── Status & Bar ───────────
 function StatusIndicator({ quantity, low, critical }: { quantity: number; low: number; critical: number }) {
@@ -41,11 +40,11 @@ function StatusIndicator({ quantity, low, critical }: { quantity: number; low: n
 }
 
 function StockBar({ quantity, low, critical, max }: { quantity: number; low: number; critical: number; max: number }) {
-  const pct   = Math.min(100, (quantity / Math.max(max, 1)) * 100);
+  const pct   = Math.min(1, quantity / Math.max(max, 1));
   const color = quantity <= critical ? '#d4183d' : quantity <= low ? '#d4a017' : '#52b96a';
   return (
-    <div style={{ height: 3, borderRadius: '2px', background: '#e0e3ec', boxShadow: 'inset 1px 1px 3px #c8cad1', overflow: 'hidden', marginTop: 8 }}>
-      <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: '2px', transition: 'width 0.6s ease' }} />
+    <div style={{ height: 3, borderRadius: '2px', background: '#e0e3ec', boxShadow: 'inset 1px 1px 3px #c8cad1', marginTop: 8 }}>
+      <div style={{ height: '100%', width: '100%', background: color, borderRadius: '2px', transform: `scaleX(${pct})`, transformOrigin: 'left center', transition: 'transform 0.6s ease' }} />
     </div>
   );
 }
@@ -108,7 +107,7 @@ function StockCalendar({
                 background: isSelected ? '#4a90d9' : '#eef0f5',
                 color: isSelected ? '#fff' : isToday ? '#4a90d9' : '#2d3142',
                 boxShadow: isSelected ? '2px 2px 5px rgba(74,144,217,0.4)' : '2px 2px 4px #c8cad1, -2px -2px 4px rgba(255,255,255,0.8)',
-                position: 'relative', transition: 'all 0.12s',
+                position: 'relative', transition: 'box-shadow 0.12s, background-color 0.12s, color 0.12s',
               }}
             >
               {day}
@@ -195,22 +194,71 @@ function AdditionDateNav({
   );
 }
 
+// ─────────── Undo Toast ───────────
+function UndoToast({ entry, startedAt, onUndo }: { entry: StockAddition; startedAt: number; onUndo: () => void }) {
+  const DURATION = 2400;
+  const [, setTick] = useState(0);
+
+  useEffect(() => {
+    const id = setInterval(() => setTick(t => t + 1), 100);
+    return () => clearInterval(id);
+  }, []);
+
+  const progress = Math.max(0, 1 - (Date.now() - startedAt) / DURATION);
+  const qty = entry.quantity % 1 === 0 ? entry.quantity : entry.quantity.toFixed(1);
+
+  return (
+    <div style={{
+      position: 'fixed', bottom: 80, left: 0, right: 0,
+      width: 'calc(100% - 28px)', maxWidth: 402, margin: '0 auto', zIndex: 200,
+      background: '#eef0f5', borderRadius: '16px',
+      boxShadow: '5px 5px 12px #c8cad1, -5px -5px 12px #ffffff',
+      padding: '12px 14px',
+      animation: 'toast-in 200ms cubic-bezier(0.16, 1, 0.3, 1) both',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: '12px', fontWeight: 700, color: '#2d3142' }}>
+            +{qty} {entry.unit} {entry.productName}
+          </div>
+          <div style={{ fontSize: '10px', color: '#9a9db5', marginTop: 1 }}>Stok berhasil ditambahkan</div>
+        </div>
+        <button onClick={onUndo} style={{
+          background: '#eef0f5', boxShadow: SHD_RAISED_STD,
+          border: 'none', borderRadius: '9px', cursor: 'pointer',
+          padding: '6px 12px', fontSize: '11px', fontWeight: 700,
+          color: '#4a90d9', flexShrink: 0, transition: 'box-shadow 0.12s',
+        }}>Batalkan</button>
+      </div>
+      <div style={{ height: 2, background: '#e0e3ec', borderRadius: 1, marginTop: 10 }}>
+        <div style={{
+          height: '100%', width: '100%', background: '#4a90d9', borderRadius: 1,
+          transform: `scaleX(${progress})`, transformOrigin: 'left center',
+          transition: 'transform 100ms linear',
+        }} />
+      </div>
+    </div>
+  );
+}
+
 // ─────────── Add Stock Modal ───────────
-function AddStockModal({ onClose }: { onClose: () => void }) {
+function AddStockModal({ onClose, onAdded }: { onClose: () => void; onAdded: (entry: StockAddition) => void }) {
   const { stock, addStock } = useAppStore();
   const [selectedId, setSelectedId] = useState('');
   const [amount, setAmount]         = useState('');
   const [addPressed, setAddPressed] = useState(false);
 
-  const selectedItem = stock.find(s => s.productId === selectedId);
-  const canAdd       = !!(selectedId && amount && parseFloat(amount) > 0);
+  const selectedItem    = stock.find(s => s.productId === selectedId);
+  const parsedAmount    = parseFloat(amount);
+  const canAdd          = !!(selectedId && amount && parsedAmount > 0);
+  const isLargeQuantity = !!(selectedItem && canAdd && parsedAmount > selectedItem.lowThreshold * 5);
 
   const handleAdd = () => {
     if (!canAdd || !selectedItem) return;
-    addStock(selectedId, parseFloat(amount), selectedItem.productName, selectedItem.unit);
+    const entry = addStock(selectedId, parsedAmount, selectedItem.productName, selectedItem.unit);
     setAmount('');
     setSelectedId('');
-    onClose();
+    onAdded(entry);
   };
 
   return (
@@ -227,7 +275,7 @@ function AddStockModal({ onClose }: { onClose: () => void }) {
           </div>
           <button onClick={onClose} style={{
             background: '#eef0f5', boxShadow: SHD_RAISED_STD,
-            border: 'none', borderRadius: '50%', width: 36, height: 36,
+            border: 'none', borderRadius: '50%', width: 44, height: 44,
             display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
           }}>
             <X size={16} color="#9a9db5" />
@@ -258,8 +306,9 @@ function AddStockModal({ onClose }: { onClose: () => void }) {
               Jumlah{selectedItem ? ` (${selectedItem.unit})` : ''}
             </div>
             <input
-              type="number" placeholder="0" value={amount}
+              type="number" placeholder="0" min="0.01" step="any" value={amount}
               onChange={e => setAmount(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') handleAdd(); }}
               style={{
                 background: '#eef0f5', boxShadow: SHD_RECESSED,
                 borderRadius: '10px', border: 'none', outline: 'none',
@@ -269,7 +318,7 @@ function AddStockModal({ onClose }: { onClose: () => void }) {
             />
           </div>
 
-          {selectedItem && amount && parseFloat(amount) > 0 && (
+          {selectedItem && amount && parsedAmount > 0 && (
             <div style={{
               background: '#eef0f5', boxShadow: SHD_RECESSED,
               borderRadius: '10px', padding: '10px 14px',
@@ -277,8 +326,20 @@ function AddStockModal({ onClose }: { onClose: () => void }) {
             }}>
               <span style={{ fontSize: '12px', color: '#9a9db5' }}>Stok saat ini</span>
               <span style={{ fontSize: '12px', fontWeight: 600, color: '#2d3142' }}>
-                {selectedItem.quantity} → <strong>{selectedItem.quantity + parseFloat(amount)}</strong> {selectedItem.unit}
+                {selectedItem.quantity} → <strong>{selectedItem.quantity + parsedAmount}</strong> {selectedItem.unit}
               </span>
+            </div>
+          )}
+
+          {isLargeQuantity && (
+            <div style={{
+              background: '#eef0f5',
+              boxShadow: 'inset 2px 2px 5px #c8cad1, inset -2px -2px 5px rgba(255,255,255,0.9)',
+              borderRadius: '10px', padding: '8px 14px',
+              display: 'flex', alignItems: 'center', gap: 8,
+            }}>
+              <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#d4a017', boxShadow: '0 0 4px #d4a01799', flexShrink: 0 }} />
+              <span style={{ fontSize: '11px', color: '#d4a017', fontWeight: 600 }}>Jumlah besar. Pastikan sudah benar.</span>
             </div>
           )}
 
@@ -357,7 +418,7 @@ function AdditionEntry({ entry, index }: { entry: StockAddition; index: number }
     }}>
       <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#4a90d9', flexShrink: 0 }} />
       <span style={{ flex: 1, fontSize: '12px', fontWeight: 600, color: '#2d3142' }}>{entry.productName}</span>
-      <span style={{ fontSize: '11px', color: '#52b96a', fontWeight: 700 }}>+{entry.quantity} {entry.unit}</span>
+      <span style={{ fontSize: '11px', color: '#52b96a', fontWeight: 700 }}>+{entry.quantity % 1 === 0 ? entry.quantity : entry.quantity.toFixed(1)} {entry.unit}</span>
       <span style={{ fontSize: '10px', color: '#c0c4d0', minWidth: 36 }}>{time}</span>
     </div>
   );
@@ -365,10 +426,27 @@ function AdditionEntry({ entry, index }: { entry: StockAddition; index: number }
 
 // ─────────── Main Screen ───────────
 export default function StockScreen() {
-  const { stock, stockAdditions } = useAppStore();
+  const { stock, stockAdditions, undoStockAddition } = useAppStore();
   const [showPriceEditor, setShowPriceEditor] = useState(false);
   const [showAddStock, setShowAddStock]       = useState(false);
   const [historyDate, setHistoryDate]         = useState<Date | null>(null);
+  const [undoState, setUndoState]             = useState<{ entry: StockAddition; startedAt: number } | null>(null);
+  const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleStockAdded = (entry: StockAddition) => {
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+    setUndoState({ entry, startedAt: Date.now() });
+    undoTimerRef.current = setTimeout(() => setUndoState(null), 10000);
+  };
+
+  const handleUndo = () => {
+    if (!undoState) return;
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+    undoStockAddition(undoState.entry);
+    setUndoState(null);
+  };
+
+  useEffect(() => () => { if (undoTimerRef.current) clearTimeout(undoTimerRef.current); }, []);
 
   const soybeanStock = stock.filter(s => s.type === 'soybean');
   const otherStock   = stock.filter(s => s.type === 'other');
@@ -386,10 +464,37 @@ export default function StockScreen() {
       .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
   }, [stockAdditions, historyDate]);
 
+  const groupedAdditions = useMemo(() => {
+    if (historyDate) return null;
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+    const groups: { label: string; entries: StockAddition[] }[] = [];
+    filteredAdditions.forEach(entry => {
+      let label: string;
+      if (isSameDay(entry.timestamp, today)) label = 'Hari Ini';
+      else if (isSameDay(entry.timestamp, yesterday)) label = 'Kemarin';
+      else {
+        const y = entry.timestamp.getFullYear();
+        label = `${entry.timestamp.getDate()} ${MONTHS[entry.timestamp.getMonth()]}${y !== today.getFullYear() ? ` ${y}` : ''}`;
+      }
+      const last = groups[groups.length - 1];
+      if (!last || last.label !== label) groups.push({ label, entries: [entry] });
+      else last.entries.push(entry);
+    });
+    return groups;
+  }, [filteredAdditions, historyDate]);
+
   return (
     <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: '14px 14px 8px', gap: 10 }}>
       {showPriceEditor && <PriceEditorModal onClose={() => setShowPriceEditor(false)} />}
-      {showAddStock && <AddStockModal onClose={() => setShowAddStock(false)} />}
+      {showAddStock && (
+        <AddStockModal
+          onClose={() => setShowAddStock(false)}
+          onAdded={entry => { setShowAddStock(false); handleStockAdded(entry); }}
+        />
+      )}
+      {undoState && <UndoToast entry={undoState.entry} startedAt={undoState.startedAt} onUndo={handleUndo} />}
 
       <PriceTicker onOpenPriceEditor={() => setShowPriceEditor(true)} />
 
@@ -475,8 +580,24 @@ export default function StockScreen() {
                   </div>
                 )}
                 <div key={historyDate?.toISOString() ?? 'all'} style={{ display: 'flex', flexDirection: 'column' }}>
-                  {filteredAdditions.map((entry, i) => <AdditionEntry key={entry.id} entry={entry} index={i} />)}
+                  {historyDate
+                    ? filteredAdditions.map((entry, i) => <AdditionEntry key={entry.id} entry={entry} index={i} />)
+                    : (groupedAdditions ?? []).map((group, gi) => (
+                        <div key={group.label}>
+                          {gi > 0 && <div style={{ height: 1, background: '#e8eaf0', margin: '6px 0' }} />}
+                          <div style={{ fontSize: '9px', fontWeight: 600, color: '#c0c4d0', letterSpacing: '0.08em', textTransform: 'uppercase', padding: '4px 0 2px' }}>
+                            {group.label}
+                          </div>
+                          {group.entries.map((entry, i) => <AdditionEntry key={entry.id} entry={entry} index={i} />)}
+                        </div>
+                      ))
+                  }
                 </div>
+                {!historyDate && stockAdditions.length > 20 && (
+                  <div style={{ textAlign: 'center', padding: '10px 0 2px', fontSize: '10px', color: '#c0c4d0' }}>
+                    Menampilkan 20 entri terbaru · Filter tanggal untuk melihat riwayat
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -499,6 +620,10 @@ export default function StockScreen() {
         @keyframes entry-in {
           from { opacity: 0; transform: translateX(-4px); }
           to   { opacity: 1; transform: translateX(0); }
+        }
+        @keyframes toast-in {
+          from { opacity: 0; transform: translateY(8px); }
+          to   { opacity: 1; transform: translateY(0); }
         }
         @media (prefers-reduced-motion: reduce) {
           *, *::before, *::after {

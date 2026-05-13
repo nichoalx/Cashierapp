@@ -82,8 +82,10 @@ interface AppContextType {
   stock: StockItem[];
   members: Member[];
   stockAdditions: StockAddition[];
+  eceranPrice: number;
 
   updateSoybeanPrice: (id: string, price: number) => void;
+  updateEceranPrice: (price: number) => void;
   addSoybeanProduct: (name: string, fullName: string, price: number) => void;
   removeSoybeanProduct: (id: string) => void;
   updateOtherPrice: (id: string, price: number) => void;
@@ -93,7 +95,8 @@ interface AppContextType {
   addTransaction: (items: TransactionItem[], remarks?: string, memberId?: string, memberName?: string) => void;
   updateTransaction: (id: string, items: TransactionItem[], remarks?: string, memberId?: string, memberName?: string) => void;
   deleteTransaction: (id: string) => void;
-  addStock: (productId: string, quantity: number, productName: string, unit: string) => void;
+  addStock: (productId: string, quantity: number, productName: string, unit: string) => StockAddition;
+  undoStockAddition: (addition: StockAddition) => void;
   addMember: (name: string, phone: string) => void;
   removeMember: (id: string) => void;
 
@@ -115,7 +118,6 @@ const INITIAL_SOYBEAN: SoybeanProduct[] = [
   { id: 'mrb', name: 'MRB', fullName: 'Mr. Bean', price: 10000, color: '#f5903d' },
   { id: 'sbs', name: 'SBS', fullName: 'SBS', price: 9500, color: '#4a90d9' },
   { id: 'bh', name: 'BH', fullName: 'Bola Hijau', price: 11000, color: '#52b96a' },
-  { id: 'e', name: 'E', fullName: 'Eceran', price: 8500, color: '#9b6dff' },
 ];
 
 const INITIAL_PLASTIC_SIZES: PlasticSize[] = [
@@ -133,7 +135,6 @@ const INITIAL_STOCK: StockItem[] = [
   { productId: 'mrb', productName: 'Mr. Bean', quantity: 500, unit: 'kg', lowThreshold: 100, criticalThreshold: 30, type: 'soybean', color: '#f5903d' },
   { productId: 'sbs', productName: 'SBS', quantity: 300, unit: 'kg', lowThreshold: 80, criticalThreshold: 20, type: 'soybean', color: '#4a90d9' },
   { productId: 'bh', productName: 'Bola Hijau', quantity: 45, unit: 'kg', lowThreshold: 100, criticalThreshold: 30, type: 'soybean', color: '#52b96a' },
-  { productId: 'e', productName: 'Eceran', quantity: 150, unit: 'kg', lowThreshold: 50, criticalThreshold: 15, type: 'soybean', color: '#9b6dff' },
   { productId: 'plastic', productName: 'Plastic', quantity: 850, unit: 'pcs', lowThreshold: 200, criticalThreshold: 50, type: 'other', color: '#38b2ac' },
   { productId: 'tempe', productName: 'Tempe', quantity: 120, unit: 'pcs', lowThreshold: 150, criticalThreshold: 50, type: 'other', color: '#d4a017' },
   { productId: 'dages', productName: 'Dages', quantity: 25, unit: 'pcs', lowThreshold: 80, criticalThreshold: 20, type: 'other', color: '#e05a6a' },
@@ -183,6 +184,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [soybeanProducts, setSoybeanProducts] = useState<SoybeanProduct[]>(INITIAL_SOYBEAN);
   const [plasticSizes, setPlasticSizes] = useState<PlasticSize[]>(INITIAL_PLASTIC_SIZES);
   const [plasticBasePrice, setPlasticBasePrice] = useState(INITIAL_PLASTIC_SIZES[0]?.price ?? 500);
+  const [eceranPrice, setEceranPrice] = useState(8500);
   const [otherProducts, setOtherProducts] = useState<OtherProduct[]>(INITIAL_OTHER);
   const [transactions, setTransactions] = useState<Transaction[]>(INITIAL_TRANSACTIONS);
   const [stock, setStock] = useState<StockItem[]>(INITIAL_STOCK);
@@ -208,6 +210,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const removeSoybeanProduct = useCallback((id: string) => {
     setSoybeanProducts(p => p.filter(x => x.id !== id));
     setStock(s => s.filter(x => x.productId !== id));
+  }, []);
+
+  const updateEceranPrice = useCallback((price: number) => {
+    setEceranPrice(price);
   }, []);
 
   const updateOtherPrice = useCallback((id: string, price: number) => {
@@ -249,16 +255,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setTransactions(p => p.filter(t => t.id !== id));
   }, []);
 
-  const addStock = useCallback((productId: string, quantity: number, productName: string, unit: string) => {
+  const addStock = useCallback((productId: string, quantity: number, productName: string, unit: string): StockAddition => {
+    const addition: StockAddition = { id: genId(), productId, productName, quantity, unit, timestamp: new Date() };
     setStock(s => s.map(item => item.productId === productId ? { ...item, quantity: item.quantity + quantity } : item));
-    setStockAdditions(a => [...a, {
-      id: genId(),
-      productId,
-      productName,
-      quantity,
-      unit,
-      timestamp: new Date(),
-    }]);
+    setStockAdditions(a => [...a, addition]);
+    return addition;
+  }, []);
+
+  const undoStockAddition = useCallback((addition: StockAddition) => {
+    setStockAdditions(prev => prev.filter(a => a.id !== addition.id));
+    setStock(s => s.map(item =>
+      item.productId === addition.productId
+        ? { ...item, quantity: Math.max(0, item.quantity - addition.quantity) }
+        : item
+    ));
   }, []);
 
   const addMember = useCallback((name: string, phone: string) => {
@@ -271,10 +281,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   return (
     <AppContext.Provider value={{
-      soybeanProducts, plasticSizes, plasticBasePrice, otherProducts, transactions, stock, members, stockAdditions,
-      updateSoybeanPrice, addSoybeanProduct, removeSoybeanProduct,
+      soybeanProducts, plasticSizes, plasticBasePrice, otherProducts, transactions, stock, members, stockAdditions, eceranPrice,
+      updateSoybeanPrice, updateEceranPrice, addSoybeanProduct, removeSoybeanProduct,
       updateOtherPrice, updatePlasticBasePrice, addPlasticSize, removePlasticSize,
-      addTransaction, updateTransaction, deleteTransaction, addStock,
+      addTransaction, updateTransaction, deleteTransaction, addStock, undoStockAddition,
       addMember, removeMember,
       cartItems, cartRemarks, cartMember, setCartItems, setCartRemarks, setCartMember,
     }}>

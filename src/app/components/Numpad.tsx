@@ -9,6 +9,7 @@ interface NumpadProps {
   canAdd: boolean;
   canComplete: boolean;
   allowDecimal?: boolean;
+  maxValue?: number;
 }
 
 function NumKey({ label, onClick, style, children, disabled }: {
@@ -122,7 +123,7 @@ function ActionKey({ icon, onClick, color, disabled, style }: {
   );
 }
 
-export function Numpad({ value, onChange, onAddItem, onComplete, canAdd, canComplete, allowDecimal = true }: NumpadProps) {
+export function Numpad({ value, onChange, onAddItem, onComplete, canAdd, canComplete, allowDecimal = true, maxValue }: NumpadProps) {
 
   const handleDigit = (d: string) => {
     if (d === '.') {
@@ -130,17 +131,27 @@ export function Numpad({ value, onChange, onAddItem, onComplete, canAdd, canComp
       onChange(value + '.');
       return;
     }
-    if (value === '0') { onChange(d); return; }
-    const dotIdx = value.indexOf('.');
-    if (dotIdx !== -1 && value.length - dotIdx - 1 >= 3) return;
-    if (value.length >= 10) return;
-    onChange(value + d);
+    const next = value === '0' ? d : value + d;
+    const dotIdx = next.indexOf('.');
+    if (dotIdx !== -1 && next.length - dotIdx - 1 > 3) return;
+    if (next.replace('.', '').length > 10) return;
+    if (maxValue !== undefined && parseFloat(next) > maxValue) return;
+    onChange(next);
   };
 
   const handleBack = () => {
     const next = value.length <= 1 ? '0' : value.slice(0, -1);
     onChange(next);
   };
+
+  const digitDisabled = (d: string) => {
+    if (maxValue === undefined) return false;
+    const next = value === '0' ? d : value + d;
+    return parseFloat(next) > maxValue;
+  };
+
+  const dotDisabled = !allowDecimal || value.includes('.') ||
+    (maxValue !== undefined && parseFloat(value) >= maxValue);
 
   return (
     <div style={{
@@ -156,25 +167,25 @@ export function Numpad({ value, onChange, onAddItem, onComplete, canAdd, canComp
         gap: 9,
       }}>
         {/* Row 1 */}
-        <NumKey label="7" onClick={() => handleDigit('7')} />
-        <NumKey label="8" onClick={() => handleDigit('8')} />
-        <NumKey label="9" onClick={() => handleDigit('9')} />
+        <NumKey label="7" onClick={() => handleDigit('7')} disabled={digitDisabled('7')} />
+        <NumKey label="8" onClick={() => handleDigit('8')} disabled={digitDisabled('8')} />
+        <NumKey label="9" onClick={() => handleDigit('9')} disabled={digitDisabled('9')} />
         <NumKey onClick={handleBack} style={{ background: '#dde0e8' }}>
           <Delete size={17} color="#8a8fa8" />
         </NumKey>
 
         {/* Rows 2–3, cols 1–3 */}
-        <NumKey label="4" onClick={() => handleDigit('4')} />
-        <NumKey label="5" onClick={() => handleDigit('5')} />
-        <NumKey label="6" onClick={() => handleDigit('6')} />
+        <NumKey label="4" onClick={() => handleDigit('4')} disabled={digitDisabled('4')} />
+        <NumKey label="5" onClick={() => handleDigit('5')} disabled={digitDisabled('5')} />
+        <NumKey label="6" onClick={() => handleDigit('6')} disabled={digitDisabled('6')} />
 
-        <NumKey label="1" onClick={() => handleDigit('1')} />
-        <NumKey label="2" onClick={() => handleDigit('2')} />
-        <NumKey label="3" onClick={() => handleDigit('3')} />
+        <NumKey label="1" onClick={() => handleDigit('1')} disabled={digitDisabled('1')} />
+        <NumKey label="2" onClick={() => handleDigit('2')} disabled={digitDisabled('2')} />
+        <NumKey label="3" onClick={() => handleDigit('3')} disabled={digitDisabled('3')} />
 
         {/* Row 4, cols 1–3 */}
-        <NumKey label="0" onClick={() => handleDigit('0')} style={{ gridColumn: 'span 2' }} />
-        <NumKey label="." onClick={() => handleDigit('.')} disabled={!allowDecimal} />
+        <NumKey label="0" onClick={() => handleDigit('0')} disabled={digitDisabled('0')} style={{ gridColumn: 'span 2' }} />
+        <NumKey label="." onClick={() => handleDigit('.')} disabled={dotDisabled} />
 
         {/* Tambah — col 4, rows 2–3 */}
         <ActionKey

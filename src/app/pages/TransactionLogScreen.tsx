@@ -51,16 +51,16 @@ function MiniCalendar({
       marginTop: 8, zIndex: 100,
       background: '#eef0f5', borderRadius: '18px',
       boxShadow: SHD_CALENDAR,
-      padding: '14px', width: 280,
+      padding: '14px', width: 'min(280px, calc(100vw - 32px))',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-        <button onClick={prevMonth} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 4, color: '#9a9db5' }}>
+        <button aria-label="Bulan sebelumnya" onClick={prevMonth} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 10, color: '#9a9db5' }}>
           <ChevronLeft size={16} />
         </button>
         <span style={{ fontSize: '13px', fontWeight: 700, color: '#2d3142' }}>
           {MONTHS[viewMonth]} {viewYear}
         </span>
-        <button onClick={nextMonth} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 4, color: '#9a9db5' }}>
+        <button aria-label="Bulan berikutnya" onClick={nextMonth} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 10, color: '#9a9db5' }}>
           <ChevronRight size={16} />
         </button>
       </div>
@@ -89,7 +89,7 @@ function MiniCalendar({
                 boxShadow: isSelected
                   ? '2px 2px 5px rgba(74,144,217,0.4)'
                   : '2px 2px 4px #c8cad1, -2px -2px 4px #ffffff',
-                transition: 'all 0.12s',
+                transition: 'background 0.12s, box-shadow 0.12s',
               }}
             >
               {day}
@@ -141,17 +141,20 @@ function DateNavigator({ selectedDate, onChange }: { selectedDate: Date; onChang
   return (
     <div ref={ref} style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 6 }}>
       <button
+        aria-label="Hari sebelumnya"
         onClick={prevDay}
         style={{
           background: '#eef0f5', boxShadow: SHD_RAISED_STD,
           border: 'none', borderRadius: '10px', cursor: 'pointer',
-          width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+          width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
         }}
       >
         <ChevronLeft size={15} color="#9a9db5" />
       </button>
 
       <button
+        aria-label="Pilih tanggal"
+        aria-expanded={calOpen}
         onClick={() => setCalOpen(o => !o)}
         style={{
           flex: 1,
@@ -167,11 +170,12 @@ function DateNavigator({ selectedDate, onChange }: { selectedDate: Date; onChang
       </button>
 
       <button
+        aria-label="Hari berikutnya"
         onClick={nextDay}
         style={{
           background: '#eef0f5', boxShadow: SHD_RAISED_STD,
           border: 'none', borderRadius: '10px', cursor: 'pointer',
-          width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+          width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
         }}
       >
         <ChevronRight size={15} color="#9a9db5" />
@@ -210,6 +214,12 @@ function EditModal({ transaction, onClose, onSave }: EditModalProps) {
     return () => clearTimeout(id);
   }, []);
 
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [onClose]);
+
   const updateQty  = (id: string, val: string) => {
     const qty = parseFloat(val) || 0;
     setItems(prev => prev.map(i => i.id === id ? { ...i, quantity: qty, total: qty * i.unitPrice } : i));
@@ -235,6 +245,9 @@ function EditModal({ transaction, onClose, onSave }: EditModalProps) {
         onClick={showMemberPicker ? undefined : onClose}
       >
         <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="edit-modal-title"
           onClick={e => e.stopPropagation()}
           style={{
             background: '#eef0f5',
@@ -253,11 +266,11 @@ function EditModal({ transaction, onClose, onSave }: EditModalProps) {
           <div style={{ padding: '20px 20px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <div style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Edit</div>
-              <h3 style={{ margin: '2px 0 0', color: '#2d3142', fontSize: '18px', fontWeight: 700 }}>Order #{transaction.orderNumber}</h3>
+              <h3 id="edit-modal-title" style={{ margin: '2px 0 0', color: '#2d3142', fontSize: '18px', fontWeight: 700 }}>Order #{transaction.orderNumber}</h3>
             </div>
-            <button onClick={onClose} style={{
+            <button aria-label="Tutup" onClick={onClose} style={{
               background: '#eef0f5', boxShadow: SHD_RAISED_STD,
-              border: 'none', borderRadius: '11px', width: 36, height: 36,
+              border: 'none', borderRadius: '11px', width: 44, height: 44,
               display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
             }}>
               <X size={16} color="#9a9db5" />
@@ -288,7 +301,11 @@ function EditModal({ transaction, onClose, onSave }: EditModalProps) {
                   }}
                 />
                 <span style={{ fontSize: '11px', color: '#9a9db5', width: 20 }}>{item.unit}</span>
-                <button onClick={() => removeItem(item.id)} style={{ background: 'transparent', border: 'none', color: '#e05a6a', cursor: 'pointer' }}>
+                <button
+                  aria-label={`Hapus ${item.productName}`}
+                  onClick={() => removeItem(item.id)}
+                  style={{ background: 'transparent', border: 'none', color: '#d4183d', cursor: 'pointer', width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                >
                   <Trash2 size={14} />
                 </button>
               </div>
@@ -369,7 +386,7 @@ function EditModal({ transaction, onClose, onSave }: EditModalProps) {
   );
 }
 
-const SOYBEAN_IDS = ['mrb', 'sbs', 'bh', 'e'];
+const SOYBEAN_IDS = ['mrb', 'sbs', 'bh'];
 const PLASTIC_ID  = 'plastic';
 const OTHER_IDS   = ['tempe', 'dages'];
 
@@ -414,9 +431,11 @@ export default function TransactionLogScreen() {
   const [filterOpen, setFilterOpen]           = useState(false);
   const [filterBtnPressed, setFilterBtnPressed] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
+  const savedIdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dragRef  = useRef<{ start: number; delta: number } | null>(null);
+  const trackRef = useRef<HTMLDivElement>(null);
   const [summarySlide, setSummarySlide] = useState(0);
-  const [dragStart, setDragStart]       = useState<number | null>(null);
-  const [dragDelta, setDragDelta]       = useState(0);
+  const [savedId, setSavedId]           = useState<string | null>(null);
 
   const toggleFilter = (key: 'soybean' | 'plastic' | 'other') => {
     setActiveFilters(prev => {
@@ -427,12 +446,21 @@ export default function TransactionLogScreen() {
   };
 
   useEffect(() => {
+    return () => { if (savedIdTimerRef.current) clearTimeout(savedIdTimerRef.current); };
+  }, []);
+
+  useEffect(() => {
     if (!filterOpen) return;
-    const handler = (e: MouseEvent) => {
+    const mouseHandler = (e: MouseEvent) => {
       if (searchRef.current && !searchRef.current.contains(e.target as Node)) setFilterOpen(false);
     };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
+    const keyHandler = (e: KeyboardEvent) => { if (e.key === 'Escape') setFilterOpen(false); };
+    document.addEventListener('mousedown', mouseHandler);
+    document.addEventListener('keydown', keyHandler);
+    return () => {
+      document.removeEventListener('mousedown', mouseHandler);
+      document.removeEventListener('keydown', keyHandler);
+    };
   }, [filterOpen]);
 
   const dayTxs = useMemo(
@@ -528,19 +556,27 @@ export default function TransactionLogScreen() {
           const confirming = deleteConfirm === tx.id;
           return (
             <div key={tx.id} style={{
-              background: '#eef0f5', boxShadow: SHD_RAISED_LIST,
+              background: '#eef0f5',
+              boxShadow: savedId === tx.id
+                ? `0 0 0 2px rgba(74,144,217,0.45), ${SHD_RAISED_LIST}`
+                : SHD_RAISED_LIST,
               borderRadius: '16px', overflow: 'hidden',
-              transition: 'all 0.2s',
+              transition: savedId === tx.id ? 'none' : 'box-shadow 0.6s ease-out',
               flexShrink: 0,
             }}>
               {/* Row */}
               <div
+                role="button"
+                tabIndex={0}
+                aria-expanded={expanded}
+                aria-label={`Order #${tx.orderNumber}, ${formatRupiah(tx.total)}`}
                 style={{
                   padding: '12px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10,
                   transform: pressedRow === tx.id ? 'scale(0.985)' : 'scale(1)',
                   transition: 'transform 0.08s cubic-bezier(0.16, 1, 0.3, 1)',
                 }}
                 onClick={() => setExpandedId(expanded ? null : tx.id)}
+                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpandedId(expanded ? null : tx.id); } }}
                 onPointerDown={() => setPressedRow(tx.id)}
                 onPointerUp={() => setPressedRow(null)}
                 onPointerLeave={() => setPressedRow(null)}
@@ -616,7 +652,7 @@ export default function TransactionLogScreen() {
                       onPointerUp={() => setPressedBtn(null)}
                       onPointerLeave={() => setPressedBtn(null)}
                       style={{
-                        flex: 1, height: 36, borderRadius: '10px', border: 'none', cursor: 'pointer',
+                        flex: 1, height: 44, borderRadius: '10px', border: 'none', cursor: 'pointer',
                         background: '#eef0f5',
                         boxShadow: pressedBtn === `edit_${tx.id}` ? SHD_RECESSED : SHD_RAISED_STD,
                         transform: pressedBtn === `edit_${tx.id}` ? 'scale(0.96)' : 'scale(1)',
@@ -635,7 +671,7 @@ export default function TransactionLogScreen() {
                           onPointerUp={() => setPressedBtn(null)}
                           onPointerLeave={() => setPressedBtn(null)}
                           style={{
-                            flex: 1, height: 36, borderRadius: '10px', border: 'none', cursor: 'pointer',
+                            flex: 1, height: 44, borderRadius: '10px', border: 'none', cursor: 'pointer',
                             background: '#d4183d', color: '#fff', fontSize: '12px', fontWeight: 700,
                             boxShadow: pressedBtn === `conf_${tx.id}` ? SHD_ACTION_PRESS : SHD_ACTION_RAISED,
                             transform: pressedBtn === `conf_${tx.id}` ? 'scale(0.96)' : 'scale(1)',
@@ -649,8 +685,9 @@ export default function TransactionLogScreen() {
                           onPointerDown={() => setPressedBtn(`canc_${tx.id}`)}
                           onPointerUp={() => setPressedBtn(null)}
                           onPointerLeave={() => setPressedBtn(null)}
+                          aria-label="Batalkan"
                           style={{
-                            width: 36, height: 36, borderRadius: '10px', border: 'none', cursor: 'pointer',
+                            width: 44, height: 44, borderRadius: '10px', border: 'none', cursor: 'pointer',
                             background: '#eef0f5',
                             boxShadow: pressedBtn === `canc_${tx.id}` ? SHD_RECESSED : SHD_RAISED_STD,
                             transform: pressedBtn === `canc_${tx.id}` ? 'scale(0.96)' : 'scale(1)',
@@ -668,12 +705,12 @@ export default function TransactionLogScreen() {
                         onPointerUp={() => setPressedBtn(null)}
                         onPointerLeave={() => setPressedBtn(null)}
                         style={{
-                          flex: 1, height: 36, borderRadius: '10px', border: 'none', cursor: 'pointer',
+                          flex: 1, height: 44, borderRadius: '10px', border: 'none', cursor: 'pointer',
                           background: '#eef0f5',
                           boxShadow: pressedBtn === `del_${tx.id}` ? SHD_RECESSED : SHD_RAISED_STD,
                           transform: pressedBtn === `del_${tx.id}` ? 'scale(0.96)' : 'scale(1)',
                           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                          color: '#e05a6a', fontSize: '12px', fontWeight: 600,
+                          color: '#d4183d', fontSize: '12px', fontWeight: 600,
                           transition: 'box-shadow 0.07s, transform 0.07s',
                         }}
                       >
@@ -710,7 +747,13 @@ export default function TransactionLogScreen() {
         <EditModal
           transaction={editingTx}
           onClose={() => setEditingTx(null)}
-          onSave={(items, remarks, memberId, memberName) => updateTransaction(editingTx.id, items, remarks || undefined, memberId, memberName)}
+          onSave={(items, remarks, memberId, memberName) => {
+            updateTransaction(editingTx.id, items, remarks || undefined, memberId, memberName);
+            const txId = editingTx.id;
+            if (savedIdTimerRef.current) clearTimeout(savedIdTimerRef.current);
+            setSavedId(txId);
+            savedIdTimerRef.current = setTimeout(() => setSavedId(null), 1200);
+          }}
         />
       )}
 
@@ -729,25 +772,39 @@ export default function TransactionLogScreen() {
           borderRadius: '16px', marginBottom: 20,
           overflow: 'hidden', touchAction: 'pan-y', userSelect: 'none',
         }}
-        onPointerDown={e => { setDragStart(e.clientX); setDragDelta(0); }}
+        onPointerDown={e => {
+          dragRef.current = { start: e.clientX, delta: 0 };
+          if (trackRef.current) trackRef.current.style.transition = 'none';
+        }}
         onPointerMove={e => {
-          if (dragStart === null) return;
-          const raw = e.clientX - dragStart;
+          if (!dragRef.current || !trackRef.current) return;
+          const raw = e.clientX - dragRef.current.start;
           const atEdge = (raw < 0 && summarySlide === 2) || (raw > 0 && summarySlide === 0);
-          setDragDelta(atEdge ? raw / 3 : raw);
+          dragRef.current.delta = atEdge ? raw / 3 : raw;
+          trackRef.current.style.transform = `translateX(calc(-${(summarySlide * 100 / 3).toFixed(4)}% + ${dragRef.current.delta}px))`;
         }}
         onPointerUp={() => {
-          if (dragStart !== null && Math.abs(dragDelta) > 40)
-            setSummarySlide(s => dragDelta < 0 ? Math.min(2, s + 1) : Math.max(0, s - 1));
-          setDragStart(null); setDragDelta(0);
+          if (!dragRef.current) return;
+          const { delta } = dragRef.current;
+          dragRef.current = null;
+          if (trackRef.current) trackRef.current.style.transition = 'transform 0.35s cubic-bezier(0.16, 1, 0.3, 1)';
+          if (Math.abs(delta) > 40)
+            setSummarySlide(s => delta < 0 ? Math.min(2, s + 1) : Math.max(0, s - 1));
         }}
-        onPointerLeave={() => { setDragStart(null); setDragDelta(0); }}
+        onPointerLeave={() => {
+          if (!dragRef.current) return;
+          dragRef.current = null;
+          if (trackRef.current) {
+            trackRef.current.style.transition = 'transform 0.35s cubic-bezier(0.16, 1, 0.3, 1)';
+            trackRef.current.style.transform = `translateX(-${(summarySlide * 100 / 3).toFixed(4)}%)`;
+          }
+        }}
       >
-        {/* Slides track — 200% wide, 2 slides */}
-        <div style={{
+        {/* Slides track — 300% wide, 3 slides */}
+        <div ref={trackRef} style={{
           display: 'flex', width: '300%',
-          transform: `translateX(calc(-${(summarySlide * 100 / 3).toFixed(4)}% + ${dragStart !== null ? dragDelta : 0}px))`,
-          transition: dragStart !== null ? 'none' : 'transform 0.35s cubic-bezier(0.16, 1, 0.3, 1)',
+          transform: `translateX(-${(summarySlide * 100 / 3).toFixed(4)}%)`,
+          transition: 'transform 0.35s cubic-bezier(0.16, 1, 0.3, 1)',
           willChange: 'transform',
         }}>
           {/* Slide 1: Total + Stats */}
@@ -808,15 +865,15 @@ export default function TransactionLogScreen() {
               Export
             </div>
             <div style={{ display: 'flex', justifyContent: 'center', gap: 20 }}>
-              {/* Sync to Sheets */}
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5 }}>
                 <button
+                  aria-label="Sinkron ke Google Sheets"
                   onClick={e => { e.stopPropagation(); alert('Google Sheets belum dikonfigurasi.'); }}
                   onPointerDown={() => setPressedBtn('slide3_sync')}
                   onPointerUp={() => setPressedBtn(null)}
                   onPointerLeave={() => setPressedBtn(null)}
                   style={{
-                    width: 36, height: 36, borderRadius: '50%', border: 'none', cursor: 'pointer',
+                    width: 44, height: 44, borderRadius: '50%', border: 'none', cursor: 'pointer',
                     background: '#eef0f5',
                     boxShadow: pressedBtn === 'slide3_sync' ? SHD_RECESSED : SHD_RAISED_STD,
                     transform: pressedBtn === 'slide3_sync' ? 'scale(0.93)' : 'scale(1)',
@@ -829,15 +886,15 @@ export default function TransactionLogScreen() {
                 <span style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5', letterSpacing: '0.03em' }}>Sheets</span>
               </div>
 
-              {/* Export CSV */}
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5 }}>
                 <button
+                  aria-label="Ekspor CSV"
                   onClick={e => { e.stopPropagation(); exportCSV(dayTxs, selectedDate); }}
                   onPointerDown={() => setPressedBtn('slide3_csv')}
                   onPointerUp={() => setPressedBtn(null)}
                   onPointerLeave={() => setPressedBtn(null)}
                   style={{
-                    width: 36, height: 36, borderRadius: '50%', border: 'none', cursor: 'pointer',
+                    width: 44, height: 44, borderRadius: '50%', border: 'none', cursor: 'pointer',
                     background: '#eef0f5',
                     boxShadow: pressedBtn === 'slide3_csv' ? SHD_RECESSED : SHD_RAISED_STD,
                     transform: pressedBtn === 'slide3_csv' ? 'scale(0.93)' : 'scale(1)',
@@ -854,27 +911,36 @@ export default function TransactionLogScreen() {
         </div>
 
         {/* Slide indicators */}
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 5, paddingBottom: 10, paddingTop: 4 }}>
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 5, paddingBottom: 6, paddingTop: 0 }}>
           {[0, 1, 2].map(i => (
             <button
               key={i}
+              aria-label={`Slide ${i + 1}`}
+              aria-current={summarySlide === i ? 'true' : undefined}
               onClick={e => { e.stopPropagation(); setSummarySlide(i); }}
               style={{
+                background: 'transparent', border: 'none', cursor: 'pointer',
+                padding: '10px 4px',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}
+            >
+              <div style={{
                 width: summarySlide === i ? 16 : 5, height: 5,
-                borderRadius: '3px', border: 'none', padding: 0, cursor: 'pointer',
+                borderRadius: '3px',
                 background: summarySlide === i ? '#4a90d9' : '#c0c4d0',
                 transition: 'width 0.25s cubic-bezier(0.16, 1, 0.3, 1), background 0.2s',
-              }}
-            />
+              }} />
+            </button>
           ))}
         </div>
       </div>
 
       {/* Search + Filter */}
       <div ref={searchRef} style={{ position: 'relative', marginBottom: 8 }}>
-        <Search size={14} color="#9a9db5" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+        <Search aria-hidden={true} size={14} color="#9a9db5" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
         <input
           type="text"
+          aria-label="Cari transaksi"
           placeholder="Cari order, produk, jumlah, catatan..."
           value={searchQuery}
           onChange={e => setSearchQuery(e.target.value)}
@@ -888,16 +954,18 @@ export default function TransactionLogScreen() {
           }}
         />
         {searchQuery && (
-          <button onClick={() => setSearchQuery('')} style={{ position: 'absolute', right: 36, top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 'none', cursor: 'pointer', padding: 2 }}>
+          <button aria-label="Hapus pencarian" onClick={() => setSearchQuery('')} style={{ position: 'absolute', right: 36, top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 'none', cursor: 'pointer', padding: 8 }}>
             <X size={13} color="#9a9db5" />
           </button>
         )}
         <button
+          aria-label={filterOpen ? 'Tutup filter' : 'Tampilkan filter'}
+          aria-expanded={filterOpen}
           onClick={() => setFilterOpen(o => !o)}
           onPointerDown={() => setFilterBtnPressed(true)}
           onPointerUp={() => setFilterBtnPressed(false)}
           onPointerLeave={() => setFilterBtnPressed(false)}
-          style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 'none', cursor: 'pointer', padding: 4, display: 'flex', alignItems: 'center' }}
+          style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 'none', cursor: 'pointer', padding: 8, display: 'flex', alignItems: 'center' }}
         >
           <SlidersHorizontal
             size={15}
@@ -910,14 +978,18 @@ export default function TransactionLogScreen() {
         </button>
 
         {filterOpen && (
-          <div style={{
-            position: 'absolute', top: 'calc(100% + 5px)', right: 0, zIndex: 50,
-            width: 148,
-            background: '#eef0f5', borderRadius: '11px',
-            boxShadow: SHD_CALENDAR,
-            padding: '7px',
-            animation: 'filter-panel-in 150ms cubic-bezier(0.16, 1, 0.3, 1) both',
-          }}>
+          <div
+            role="group"
+            aria-label="Filter jenis produk"
+            style={{
+              position: 'absolute', top: 'calc(100% + 5px)', right: 0, zIndex: 50,
+              width: 148,
+              background: '#eef0f5', borderRadius: '11px',
+              boxShadow: SHD_CALENDAR,
+              padding: '7px',
+              animation: 'filter-panel-in 150ms cubic-bezier(0.16, 1, 0.3, 1) both',
+            }}
+          >
             {([
               { key: 'soybean' as const, label: 'Kedelai', color: '#52b96a' },
               { key: 'plastic' as const, label: 'Plastik', color: '#4a90d9' },
@@ -927,6 +999,7 @@ export default function TransactionLogScreen() {
               return (
                 <button
                   key={opt.key}
+                  aria-pressed={checked}
                   onClick={() => toggleFilter(opt.key)}
                   style={{
                     width: '100%', display: 'flex', alignItems: 'center', gap: 8,
