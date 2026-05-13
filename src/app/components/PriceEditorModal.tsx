@@ -79,8 +79,8 @@ export function PriceEditorModal({ onClose }: Props) {
         }
       `}</style>
       <div
-        className="fixed inset-0 z-50 flex items-end justify-center"
-        style={{ background: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(4px)' }}
+        className="fixed z-50 flex items-end justify-center"
+        style={{ left: 0, right: 0, top: 'var(--app-visual-offset-top)', height: 'var(--app-visual-height)', background: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(4px)' }}
         onClick={onClose}
       >
         <div
@@ -89,7 +89,7 @@ export function PriceEditorModal({ onClose }: Props) {
             boxShadow: '0 -8px 30px rgba(0,0,0,0.12)',
             borderRadius: '24px 24px 0 0',
             width: '100%', maxWidth: 430,
-            maxHeight: '85vh', overflow: 'hidden',
+            maxHeight: 'min(85vh, calc(var(--app-visual-height) - 16px))', overflow: 'hidden',
             display: 'flex', flexDirection: 'column',
             animation: 'sheet-slide-up 280ms cubic-bezier(0.16, 1, 0.3, 1) both',
           }}

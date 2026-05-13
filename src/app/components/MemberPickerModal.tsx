@@ -38,14 +38,14 @@ export function MemberPickerModal({ members, onSelect, onClose }: {
         }
       `}</style>
       <div
-        style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
+        style={{ position: 'fixed', left: 0, right: 0, top: 'var(--app-visual-offset-top)', height: 'var(--app-visual-height)', zIndex: 200, background: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
         onClick={onClose}
       >
         <div
           onClick={e => e.stopPropagation()}
           style={{
             background: '#eef0f5', borderRadius: '22px 22px 0 0',
-            width: '100%', maxWidth: 430, maxHeight: '60vh',
+            width: '100%', maxWidth: 430, maxHeight: 'min(60vh, calc(var(--app-visual-height) - 16px))',
             display: 'flex', flexDirection: 'column',
             boxShadow: '0 -8px 30px rgba(0,0,0,0.15)',
             overflow: 'hidden',

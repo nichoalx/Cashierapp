@@ -22,14 +22,14 @@ export function BottomNav() {
   return (
     <nav style={{
       position: 'absolute',
-      bottom: 14,
-      left: 16,
-      right: 16,
+      bottom: 'var(--app-nav-safe-bottom)',
+      left: 'var(--app-nav-gutter)',
+      right: 'var(--app-nav-gutter)',
       zIndex: 10,
       background: '#eef0f5',
       boxShadow: '0 8px 32px rgba(0,0,0,0.14), 0 2px 8px rgba(0,0,0,0.08)',
       borderRadius: '999px',
-      height: 58,
+      height: 'var(--app-nav-height)',
     }}>
       {/* Inner container is the positioning context for the pill */}
       <div style={{

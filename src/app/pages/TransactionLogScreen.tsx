@@ -236,8 +236,12 @@ function EditModal({ transaction, onClose, onSave }: EditModalProps) {
   return (
     <>
       <div
-        className="fixed inset-0 z-50 flex items-end justify-center"
+        className="fixed z-50 flex items-end justify-center"
         style={{
+          left: 0,
+          right: 0,
+          top: 'var(--app-visual-offset-top)',
+          height: 'var(--app-visual-height)',
           background: 'rgba(0,0,0,0.35)',
           backdropFilter: showMemberPicker ? 'none' : 'blur(4px)',
           transition: 'backdrop-filter 0.25s',
@@ -253,7 +257,7 @@ function EditModal({ transaction, onClose, onSave }: EditModalProps) {
             background: '#eef0f5',
             boxShadow: '0 -8px 30px rgba(0,0,0,0.12)',
             borderRadius: '24px 24px 0 0',
-            width: '100%', maxWidth: 430, maxHeight: '80vh',
+            width: '100%', maxWidth: 430, maxHeight: 'min(80vh, calc(var(--app-visual-height) - 16px))',
             display: 'flex', flexDirection: 'column', overflow: 'hidden',
             transform: sheetTransform,
             transformOrigin: 'center bottom',
@@ -521,11 +525,13 @@ export default function TransactionLogScreen() {
       minHeight: 0,
       overflowY: 'auto',
       overflowX: 'hidden',
+      overscrollBehavior: 'contain',
+      WebkitOverflowScrolling: 'touch',
       display: 'flex',
       flexDirection: 'column',
       gap: 12,
       margin: '0 -8px',
-      padding: '4px 8px 80px',
+      padding: '4px 8px var(--app-content-bottom)',
     }}>
       {filteredTxs.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '32px 20px', flexShrink: 0 }}>

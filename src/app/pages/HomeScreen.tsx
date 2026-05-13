@@ -31,7 +31,7 @@ function RemarksModal({ value, onSave, onClose }: {
   }, [onClose]);
   return (
     <div
-      style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
+      style={{ position: 'fixed', left: 0, right: 0, top: 'var(--app-visual-offset-top)', height: 'var(--app-visual-height)', zIndex: 200, background: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
       onClick={onClose}
     >
       <div
@@ -238,7 +238,7 @@ export default function HomeScreen() {
   });
 
   return (
-    <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: '14px var(--app-page-gutter) 100px', gap: 12 }}>
+    <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: '14px var(--app-page-gutter) var(--app-content-bottom)', gap: 12 }}>
       {showPriceEditor && <PriceEditorModal onClose={() => setShowPriceEditor(false)} />}
       {showRemarksModal && (
         <RemarksModal
@@ -267,6 +267,8 @@ export default function HomeScreen() {
         aria-label="Keranjang"
         style={{
           overflow: 'auto',
+          overscrollBehavior: 'contain',
+          WebkitOverflowScrolling: 'touch',
           background: '#eef0f5',
           boxShadow: 'inset 3px 3px 8px #c8cad1, inset -3px -3px 8px #ffffff',
           borderRadius: '14px',

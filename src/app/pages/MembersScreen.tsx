@@ -220,12 +220,15 @@ export default function MembersScreen() {
       {/* Member list */}
       <div style={{
         flex: 1,
+        minHeight: 0,
         overflow: 'auto',
+        overscrollBehavior: 'contain',
+        WebkitOverflowScrolling: 'touch',
         display: 'flex',
         flexDirection: 'column',
         gap: 12,
         margin: '0 -8px',
-        padding: '4px 8px 14px',
+        padding: '4px 8px var(--app-content-bottom)',
       }}>
         {filtered.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '40px 20px' }}>

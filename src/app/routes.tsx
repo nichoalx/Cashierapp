@@ -19,7 +19,7 @@ function ProtectedRoot() {
   if (!user) return <Navigate to="/login" replace />;
   return (
     <MotionConfig reducedMotion="user">
-      <div style={{ flex: 1, position: 'relative', background: '#eef0f5' }}>
+      <div style={{ flex: 1, minHeight: 0, position: 'relative', background: '#eef0f5', overflow: 'hidden', overscrollBehavior: 'none' }}>
         <AnimatePresence mode="sync" initial={false}>
           <motion.div
             key={location.pathname}
@@ -59,6 +59,8 @@ function AppShell() {
     <div style={{
       width: '100vw',
       height: '100dvh',
+      overflow: 'hidden',
+      overscrollBehavior: 'none',
       background: '#dfe3ea',
       display: 'flex',
       alignItems: 'center',
@@ -67,6 +69,7 @@ function AppShell() {
       <div style={{
         width: '100%',
         height: '100%',
+        minHeight: 0,
         maxWidth: 430,
         display: 'flex',
         flexDirection: 'column',

@@ -262,10 +262,10 @@ function AddStockModal({ onClose, onAdded }: { onClose: () => void; onAdded: (en
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center" style={{ background: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(4px)' }} onClick={onClose}>
+    <div className="fixed z-50 flex items-end justify-center" style={{ left: 0, right: 0, top: 'var(--app-visual-offset-top)', height: 'var(--app-visual-height)', background: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(4px)' }} onClick={onClose}>
       <div onClick={e => e.stopPropagation()} style={{
         background: '#eef0f5', boxShadow: '0 -8px 30px rgba(0,0,0,0.12)',
-        borderRadius: '24px 24px 0 0', width: '100%', maxWidth: 430, padding: '20px',
+        borderRadius: '24px 24px 0 0', width: '100%', maxWidth: 430, maxHeight: 'calc(var(--app-visual-height) - 16px)', overflow: 'auto', padding: '20px',
         animation: 'sheet-slide-up 280ms cubic-bezier(0.16, 1, 0.3, 1) both',
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
@@ -541,11 +541,13 @@ export default function StockScreen() {
         flex: 1,
         minHeight: 0,
         overflow: 'auto',
+        overscrollBehavior: 'contain',
+        WebkitOverflowScrolling: 'touch',
         display: 'flex',
         flexDirection: 'column',
         gap: 12,
         margin: '0 -8px',
-        padding: '4px 8px 80px',
+        padding: '4px 8px var(--app-content-bottom)',
       }}>
         <div style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5', letterSpacing: '0.08em', textTransform: 'uppercase', paddingLeft: 2, flexShrink: 0 }}>Kedelai</div>
         {soybeanStock.map(s => <StockCard key={s.productId} s={s} maxQty={maxQty(s)} />)}

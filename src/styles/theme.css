@@ -3,6 +3,13 @@
 :root {
   --font-size: 16px;
   --app-page-gutter: 22px;
+  --app-nav-gutter: 22px;
+  --app-nav-bottom: 22px;
+  --app-nav-height: 58px;
+  --app-nav-safe-bottom: max(var(--app-nav-bottom), env(safe-area-inset-bottom, 0px));
+  --app-content-bottom: calc(var(--app-nav-height) + var(--app-nav-safe-bottom) + 16px);
+  --app-visual-height: 100dvh;
+  --app-visual-offset-top: 0px;
   --background: #eef0f5;
   --foreground: oklch(0.145 0 0);
   --card: #ffffff;
@@ -121,6 +128,15 @@
 }
 
 @layer base {
+  html,
+  body,
+  #root {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+
   * {
     @apply border-border outline-ring/50;
   }
@@ -195,5 +211,12 @@
 
   textarea {
     font-family: var(--font-ui);
+  }
+
+  input,
+  textarea,
+  select {
+    font-size: 16px !important;
+    touch-action: manipulation;
   }
 }

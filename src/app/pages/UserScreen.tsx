@@ -69,7 +69,7 @@ export default function UserScreen() {
   };
 
   return (
-    <div style={{ flex: 1, overflow: 'auto', padding: '16px var(--app-page-gutter) 80px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+    <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
       <style>
         {`
           @keyframes logout-confirm-enter {
@@ -91,14 +91,15 @@ export default function UserScreen() {
         `}
       </style>
 
-      {/* Header */}
-      <div>
-        <div style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Akun</div>
-        <h2 style={{ margin: '2px 0 0', color: '#2d3142', fontSize: '20px', fontWeight: 700, lineHeight: 1.3 }}>Profil</h2>
-      </div>
+      <div style={{ flex: 1, minHeight: 0, overflow: 'auto', overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch', padding: '16px var(--app-page-gutter) var(--app-content-bottom)', display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {/* Header */}
+        <div>
+          <div style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Akun</div>
+          <h2 style={{ margin: '2px 0 0', color: '#2d3142', fontSize: '20px', fontWeight: 700, lineHeight: 1.3 }}>Profil</h2>
+        </div>
 
-      {/* Avatar card */}
-      <div style={{ ...neuCard, padding: '22px 20px', display: 'flex', alignItems: 'center', gap: 16 }}>
+        {/* Avatar card */}
+        <div style={{ ...neuCard, padding: '22px 20px', display: 'flex', alignItems: 'center', gap: 16 }}>
         <div style={{
           width: 64, height: 64, borderRadius: '20px', flexShrink: 0,
           background: `${roleColor}18`,
@@ -123,10 +124,10 @@ export default function UserScreen() {
             {user.role}
           </span>
         </div>
-      </div>
+        </div>
 
-      {/* Stats */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        {/* Stats */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
         <div style={{ ...neuCard, padding: '14px', textAlign: 'center' }}>
           <div style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 6 }}>Transaksi</div>
           <div style={{ fontSize: '24px', fontWeight: 800, color: '#4a90d9', lineHeight: 1 }}>{totalTx}</div>
@@ -137,10 +138,10 @@ export default function UserScreen() {
           <div style={{ fontSize: '13px', fontWeight: 800, color: '#52b96a', lineHeight: 1 }}>{formatRupiah(totalRevenue)}</div>
           <div style={{ fontSize: '9px', color: '#c0c4d0', marginTop: 4, letterSpacing: '0.04em' }}>total</div>
         </div>
-      </div>
+        </div>
 
-      {/* Session info */}
-      <div style={{ ...neuCard, padding: '14px 16px' }}>
+        {/* Session info */}
+        <div style={{ ...neuCard, padding: '14px 16px' }}>
         <div style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>Sesi</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ ...iconWell, width: 32, height: 32 }}>
@@ -151,10 +152,10 @@ export default function UserScreen() {
             <div style={{ fontSize: '12px', fontWeight: 600, color: '#2d3142' }}>{formatDateTime(user.lastLogin)}</div>
           </div>
         </div>
-      </div>
+        </div>
 
-      {/* Menu items */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {/* Menu items */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
 
         <div style={neuRow}>
           <div style={{ ...iconWell, width: 34, height: 34 }}>
@@ -165,12 +166,12 @@ export default function UserScreen() {
             <div style={{ fontSize: '11px', color: '#9a9db5' }}>Trading Ops · v1.0.0 · © 2026 CV. AMA</div>
           </div>
         </div>
-      </div>
+        </div>
 
-      <div style={{ flex: 1 }} />
+        <div style={{ flex: 1 }} />
 
-      {/* Logout */}
-      {!showLogoutConfirm ? (
+        {/* Logout */}
+        {!showLogoutConfirm ? (
         <button
           onClick={() => setShowLogoutConfirm(true)}
           onPointerDown={() => setLogoutPressed(true)}
@@ -195,7 +196,7 @@ export default function UserScreen() {
           }} />
           Keluar
         </button>
-      ) : (
+        ) : (
         <div
           className="logout-motion"
           style={{
@@ -274,7 +275,8 @@ export default function UserScreen() {
             </button>
           </div>
         </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
