@@ -2,6 +2,7 @@
 
 :root {
   --font-size: 16px;
+  --app-page-gutter: 22px;
   --background: #eef0f5;
   --foreground: oklch(0.145 0 0);
   --card: #ffffff;

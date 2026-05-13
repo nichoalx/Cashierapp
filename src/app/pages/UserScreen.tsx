@@ -69,7 +69,7 @@ export default function UserScreen() {
   };
 
   return (
-    <div style={{ flex: 1, overflow: 'auto', padding: '16px 16px 80px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+    <div style={{ flex: 1, overflow: 'auto', padding: '16px var(--app-page-gutter) 80px', display: 'flex', flexDirection: 'column', gap: 14 }}>
       <style>
         {`
           @keyframes logout-confirm-enter {
