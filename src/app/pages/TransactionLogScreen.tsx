@@ -728,7 +728,7 @@ export default function TransactionLogScreen() {
   );
 
   return (
-    <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: '16px 16px 8px', gap: 0 }}>
+    <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: '16px var(--app-page-gutter) 8px', gap: 0 }}>
       <style>{`
         @keyframes tx-expand-in {
           from { opacity: 0; transform: translateY(-5px); }

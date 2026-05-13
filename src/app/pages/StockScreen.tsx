@@ -486,7 +486,7 @@ export default function StockScreen() {
   }, [filteredAdditions, historyDate]);
 
   return (
-    <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: '14px 14px 8px', gap: 10 }}>
+    <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: '14px var(--app-page-gutter) 8px', gap: 10 }}>
       {showPriceEditor && <PriceEditorModal onClose={() => setShowPriceEditor(false)} />}
       {showAddStock && (
         <AddStockModal

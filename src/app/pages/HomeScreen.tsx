@@ -238,7 +238,7 @@ export default function HomeScreen() {
   });
 
   return (
-    <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: '14px 14px 100px', gap: 12 }}>
+    <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: '14px var(--app-page-gutter) 100px', gap: 12 }}>
       {showPriceEditor && <PriceEditorModal onClose={() => setShowPriceEditor(false)} />}
       {showRemarksModal && (
         <RemarksModal
@@ -550,4 +550,3 @@ export default function HomeScreen() {
     </div>
   );
 }
-    

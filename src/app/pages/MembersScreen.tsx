@@ -88,7 +88,7 @@ export default function MembersScreen() {
   };
 
   return (
-    <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: '16px 16px 8px', gap: 12 }}>
+    <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: '16px var(--app-page-gutter) 8px', gap: 12 }}>
       <style>{`
         @keyframes form-expand {
           from { opacity: 0; transform: translateY(-6px); }
