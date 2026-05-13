@@ -522,11 +522,13 @@ export default function TransactionLogScreen() {
   const renderTxList = () => (
     <div style={{
       flex: 1,
+      flexBasis: 0,
       minHeight: 0,
       overflowY: 'auto',
       overflowX: 'hidden',
       overscrollBehavior: 'contain',
       WebkitOverflowScrolling: 'touch',
+      touchAction: 'pan-y',
       display: 'flex',
       flexDirection: 'column',
       gap: 12,
