@@ -40,18 +40,21 @@ export default function LoginScreen() {
 
   useEffect(() => {
     if (!isLoading && user) navigate('/', { replace: true });
-  }, [user, isLoading]);
+  }, [user, isLoading, navigate]);
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [waitingForSession, setWaitingForSession] = useState(false);
   const [submitPressed, setSubmitPressed] = useState(false);
+
+  const isSubmitting = loading || waitingForSession;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email.trim() || !password) return;
+    if (!email.trim() || !password || isSubmitting) return;
     setError('');
     setLoading(true);
     try {
@@ -61,6 +64,7 @@ export default function LoginScreen() {
         flow: 'signIn',
       });
       localStorage.setItem('ama_last_login', new Date().toISOString());
+      setWaitingForSession(true);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : '';
       setError(
@@ -68,7 +72,7 @@ export default function LoginScreen() {
           ? 'Email tidak terdaftar.'
           : 'Email atau kata sandi salah.'
       );
-    } finally {
+      setWaitingForSession(false);
       setLoading(false);
     }
   };
@@ -183,24 +187,24 @@ export default function LoginScreen() {
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={isSubmitting}
             onPointerDown={() => setSubmitPressed(true)}
             onPointerUp={() => setSubmitPressed(false)}
             onPointerLeave={() => setSubmitPressed(false)}
             style={{
               height: 52, borderRadius: '14px', border: 'none',
-              cursor: loading ? 'default' : 'pointer',
-              background: loading ? '#a8acbe' : '#4a90d9',
+              cursor: isSubmitting ? 'default' : 'pointer',
+              background: isSubmitting ? '#a8acbe' : '#4a90d9',
               color: '#fff', fontWeight: 700, fontSize: '14px',
-              boxShadow: submitPressed && !loading ? SHD_ACTION_PRESS : SHD_ACTION_RAISED,
-              transform: submitPressed && !loading ? 'scale(0.97)' : 'scale(1)',
+              boxShadow: submitPressed && !isSubmitting ? SHD_ACTION_PRESS : SHD_ACTION_RAISED,
+              transform: submitPressed && !isSubmitting ? 'scale(0.97)' : 'scale(1)',
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
               transition: 'box-shadow 0.07s, transform 0.07s, background-color 0.15s',
               marginTop: 4,
-              opacity: loading ? 0.7 : 1,
+              opacity: isSubmitting ? 0.7 : 1,
             }}
           >
-            {loading ? <ButtonSpinner /> : <><span>Masuk</span><ArrowRight size={16} /></>}
+            {isSubmitting ? <ButtonSpinner /> : <><span>Masuk</span><ArrowRight size={16} /></>}
           </button>
         </form>
       </div>

@@ -15,7 +15,7 @@ const ORBS: Array<{
 
 export default function WelcomeScreen() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, isLoading } = useAuth();
   const [visible, setVisible] = useState(false);
   const [exiting, setExiting] = useState(false);
 
@@ -25,7 +25,7 @@ export default function WelcomeScreen() {
   }, []);
 
   const handleTap = () => {
-    if (exiting) return;
+    if (exiting || isLoading) return;
     setExiting(true);
     setTimeout(() => navigate(user ? '/' : '/login', { replace: true }), 380);
   };
@@ -123,7 +123,7 @@ export default function WelcomeScreen() {
           textTransform: 'uppercase',
           animation: 'hint-pulse 2.8s ease-in-out infinite',
         }}>
-          TAP TO CONTINUE
+          {isLoading ? 'LOADING' : 'TAP TO CONTINUE'}
         </span>
       </div>
 
