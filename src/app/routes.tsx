@@ -19,7 +19,7 @@ function ProtectedRoot() {
   if (!user) return <Navigate to="/login" replace />;
   return (
     <MotionConfig reducedMotion="user">
-      <div style={{ flex: 1, minHeight: 0, position: 'relative', background: '#eef0f5', overflow: 'hidden', overscrollBehavior: 'none', paddingTop: 'env(safe-area-inset-top, 0px)' }}>
+      <div style={{ flex: 1, minHeight: 0, position: 'relative', background: '#eef0f5', overflow: 'hidden', overscrollBehavior: 'none' }}>
         <AnimatePresence mode="sync" initial={false}>
           <motion.div
             key={location.pathname}
@@ -33,6 +33,7 @@ function ProtectedRoot() {
               display: 'flex',
               flexDirection: 'column',
               overflow: 'hidden',
+              paddingTop: 'env(safe-area-inset-top, 0px)',
             }}
           >
             <Outlet />
