@@ -8,8 +8,8 @@ export const createAdminUser = internalAction({
     try {
       await createAccount(ctx, {
         provider: "password",
-        account: { id: "nicholasalexanderjosia@gmail.com", secret: password },
-        profile: { email: "nicholasalexanderjosia@gmail.com", name: "Nicholas" },
+        account: { id: "agromudaanugerahrddk@gmail.com", secret: password },
+        profile: { email: "agromudaanugerahrddk@gmail.com", name: "Agromuda" },
       });
       return { status: "created" };
     } catch (err: unknown) {

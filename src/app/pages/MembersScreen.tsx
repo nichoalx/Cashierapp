@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useAppStore } from '../store';
 import { Search, UserPlus, Trash2, Phone, User, X, Users } from 'lucide-react';
 
@@ -22,8 +22,13 @@ const neuInput: React.CSSProperties = {
   boxSizing: 'border-box' as const,
 };
 
-function formatPhone(phone: string) {
-  return phone.replace(/(\d{4})(\d{4})(\d{4})/, '$1-$2-$3');
+// Flexible formatter: groups digits as 4-4-rest for any length 1–13+
+function formatPhone(raw: string): string {
+  const d = raw.replace(/\D/g, '');
+  if (!d) return '';
+  if (d.length <= 4) return d;
+  if (d.length <= 8) return `${d.slice(0, 4)}-${d.slice(4)}`;
+  return `${d.slice(0, 4)}-${d.slice(4, 8)}-${d.slice(8)}`;
 }
 
 function initials(name: string) {
@@ -50,30 +55,129 @@ export default function MembersScreen() {
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [nameError, setNameError] = useState('');
   const [savePressed, setSavePressed] = useState(false);
+  const [dupWarn, setDupWarn] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string } | null>(null);
+  const [sortOrder, setSortOrder] = useState<'az' | 'newest'>('az');
+
+  const phoneInputRef = useRef<HTMLInputElement>(null);
+  const deleteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingDeleteRef = useRef<{ id: string; name: string } | null>(null);
+  const [recentlyAddedId, setRecentlyAddedId] = useState<string | null>(null);
+  const prevMembersLength = useRef(members.length);
+  const recentlyAddedRef = useRef<HTMLDivElement | null>(null);
+
+  // Keep ref in sync so the unmount cleanup can access current state
+  useEffect(() => {
+    pendingDeleteRef.current = pendingDelete;
+  }, [pendingDelete]);
+
+  // On unmount: commit any pending soft-delete so navigation doesn't silently undo it
+  useEffect(() => {
+    return () => {
+      if (deleteTimerRef.current) clearTimeout(deleteTimerRef.current);
+      if (pendingDeleteRef.current) removeMember(pendingDeleteRef.current.id);
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Detect newly added member: apply highlight and scroll it into view
+  useEffect(() => {
+    if (members.length > prevMembersLength.current) {
+      const newMember = members[members.length - 1];
+      setRecentlyAddedId(newMember.id);
+      const t = setTimeout(() => setRecentlyAddedId(null), 1800);
+      prevMembersLength.current = members.length;
+      return () => clearTimeout(t);
+    }
+    prevMembersLength.current = members.length;
+  }, [members]);
+
+  useEffect(() => {
+    if (recentlyAddedId && recentlyAddedRef.current) {
+      recentlyAddedRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }, [recentlyAddedId]);
+
+  // On iOS PWA the keyboard overlays without resizing the 100dvh chain.
+  // Track visualViewport.height directly so the container shrinks correctly
+  // when the form is open and the keyboard appears, keeping the save button visible.
+  const [vpHeight, setVpHeight] = useState<number | null>(null);
+  useEffect(() => {
+    if (!showAdd) { setVpHeight(null); return; }
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const update = () => setVpHeight(vv.height);
+    update();
+    vv.addEventListener('resize', update);
+    return () => { vv.removeEventListener('resize', update); setVpHeight(null); };
+  }, [showAdd]);
 
   const filtered = useMemo(() => {
-    if (!search.trim()) return members;
+    const base = pendingDelete
+      ? members.filter(m => m.id !== pendingDelete.id)
+      : members;
+    const sorted = sortOrder === 'az'
+      ? [...base].sort((a, b) => a.name.localeCompare(b.name, 'id', { sensitivity: 'base' }))
+      : [...base].reverse();
+    if (!search.trim()) return sorted;
     const q = search.toLowerCase();
-    return members.filter(m =>
+    return sorted.filter(m =>
       m.name.toLowerCase().includes(q) ||
       m.phone.includes(q)
     );
-  }, [members, search]);
+  }, [members, search, pendingDelete, sortOrder]);
 
+  const effectiveTotal = members.length - (pendingDelete ? 1 : 0);
   const saveDisabled = !newName.trim();
+
+  // Live phone preview and range warning for the add form
+  const phoneDigits = newPhone.replace(/\D/g, '');
+  const phonePreview = newPhone.trim() ? formatPhone(newPhone) : '';
+  const phoneOutOfRange = newPhone.trim() !== '' && phoneDigits.length > 0 &&
+    (phoneDigits.length < 10 || phoneDigits.length > 13);
 
   const handleAdd = () => {
     setNameError('');
     if (!newName.trim()) { setNameError('Nama tidak boleh kosong.'); return; }
+
+    // Duplicate check — warn on first attempt, allow on second
+    if (!dupWarn) {
+      const isDuplicate = members.some(
+        m => m.name.trim().toLowerCase() === newName.trim().toLowerCase()
+      );
+      if (isDuplicate) { setDupWarn(true); return; }
+    }
+
     addMember(newName.trim(), newPhone.trim());
     setNewName('');
     setNewPhone('');
+    setDupWarn(false);
     setShowAdd(false);
   };
 
   const handleDelete = (id: string) => {
-    removeMember(id);
+    // Commit any previous pending delete immediately before starting a new one
+    if (pendingDelete) {
+      if (deleteTimerRef.current) clearTimeout(deleteTimerRef.current);
+      removeMember(pendingDelete.id);
+    }
+
+    const name = members.find(m => m.id === id)?.name ?? 'Anggota';
     setDeleteConfirm(null);
+    setPendingDelete({ id, name });
+
+    deleteTimerRef.current = setTimeout(() => {
+      removeMember(id);
+      setPendingDelete(null);
+      deleteTimerRef.current = null;
+    }, 5000);
+  };
+
+  const handleUndoDelete = () => {
+    if (deleteTimerRef.current) {
+      clearTimeout(deleteTimerRef.current);
+      deleteTimerRef.current = null;
+    }
+    setPendingDelete(null);
   };
 
   const handleBatal = () => {
@@ -81,18 +185,39 @@ export default function MembersScreen() {
     setNameError('');
     setNewName('');
     setNewPhone('');
+    setDupWarn(false);
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  // Name → focus phone; phone → submit
+  const handleNameKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') { e.preventDefault(); phoneInputRef.current?.focus(); }
+  };
+  const handlePhoneKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !saveDisabled) handleAdd();
   };
 
   return (
-    <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: '16px var(--app-page-gutter) 8px', gap: 12 }}>
+    <div
+      className="members-screen"
+      style={{
+        ...(vpHeight !== null ? { height: vpHeight, flex: 'none' } : { flex: 1 }),
+        overflow: 'hidden', display: 'flex', flexDirection: 'column',
+        padding: '16px var(--app-page-gutter) 8px', gap: 12,
+      }}
+    >
       <style>{`
         @keyframes form-expand {
           from { opacity: 0; transform: translateY(-6px); }
           to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes toast-in {
+          from { opacity: 0; transform: translateY(4px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes card-added {
+          0%   { box-shadow: 3px 3px 7px #c8cad1, -3px -3px 7px rgba(255,255,255,0.92); }
+          12%  { box-shadow: 3px 3px 7px #c8cad1, -3px -3px 7px rgba(255,255,255,0.92), 0 0 0 2px #52b96a, 0 0 10px rgba(82,185,106,0.22); }
+          100% { box-shadow: 3px 3px 7px #c8cad1, -3px -3px 7px rgba(255,255,255,0.92); }
         }
         @media (prefers-reduced-motion: reduce) {
           *, *::before, *::after {
@@ -101,7 +226,25 @@ export default function MembersScreen() {
             transition-duration: 0.01ms !important;
           }
         }
+        .members-screen button:focus-visible {
+          outline: 2px solid #4a90d9;
+          outline-offset: 2px;
+        }
+        .members-screen input:focus-visible {
+          outline: 2px solid #4a90d9 !important;
+          outline-offset: 2px;
+        }
       `}</style>
+
+      {/* Visually-hidden live region: announces member addition to screen readers */}
+      <div
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        style={{ position: 'absolute', width: 1, height: 1, padding: 0, margin: '-1px', overflow: 'hidden', clip: 'rect(0,0,0,0)', whiteSpace: 'nowrap', border: 0 }}
+      >
+        {recentlyAddedId ? `Anggota ${members.find(m => m.id === recentlyAddedId)?.name ?? ''} ditambahkan` : ''}
+      </div>
 
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
@@ -112,7 +255,7 @@ export default function MembersScreen() {
         <button
           onClick={showAdd ? handleBatal : () => setShowAdd(true)}
           style={{
-            height: 36, padding: '0 14px', borderRadius: '10px', border: 'none', cursor: 'pointer',
+            height: 40, padding: '0 16px', borderRadius: '11px', border: 'none', cursor: 'pointer',
             background: '#eef0f5',
             boxShadow: showAdd ? SHD_RECESSED_STD : SHD_RAISED_STD,
             display: 'flex', alignItems: 'center', gap: 6,
@@ -136,34 +279,59 @@ export default function MembersScreen() {
         }}>
           <div style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5', letterSpacing: '0.10em', textTransform: 'uppercase', marginBottom: 14 }}>ANGGOTA BARU</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+
+            {/* Name */}
             <div>
               <div style={{ position: 'relative' }}>
                 <User size={14} color="#9a9db5" style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
                 <input
                   type="text"
                   placeholder="Nama lengkap"
+                  aria-label="Nama lengkap"
                   value={newName}
-                  onChange={e => { setNewName(e.target.value); setNameError(''); }}
-                  onKeyDown={handleKeyDown}
+                  onChange={e => { setNewName(e.target.value); setNameError(''); setDupWarn(false); }}
+                  onKeyDown={handleNameKeyDown}
                   style={{ ...neuInput, paddingLeft: 38 }}
                   autoFocus
+                  maxLength={60}
                 />
               </div>
               {nameError && (
                 <div style={{ fontSize: '11px', color: '#d4183d', marginTop: 5, paddingLeft: 2 }}>{nameError}</div>
               )}
+              {dupWarn && (
+                <div style={{ fontSize: '11px', color: '#d4a017', marginTop: 5, paddingLeft: 2 }}>
+                  Nama ini sudah terdaftar. Klik Simpan lagi untuk tetap menambahkan.
+                </div>
+              )}
             </div>
-            <div style={{ position: 'relative' }}>
-              <Phone size={14} color="#9a9db5" style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
-              <input
-                type="tel"
-                placeholder="Nomor HP (opsional)"
-                value={newPhone}
-                onChange={e => setNewPhone(e.target.value)}
-                onKeyDown={handleKeyDown}
-                style={{ ...neuInput, paddingLeft: 38 }}
-              />
+
+            {/* Phone */}
+            <div>
+              <div style={{ position: 'relative' }}>
+                <Phone size={14} color="#9a9db5" style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+                <input
+                  ref={phoneInputRef}
+                  type="tel"
+                  placeholder="Nomor HP (opsional)"
+                  aria-label="Nomor HP, opsional"
+                  value={newPhone}
+                  onChange={e => setNewPhone(e.target.value)}
+                  onKeyDown={handlePhoneKeyDown}
+                  style={{ ...neuInput, paddingLeft: 38 }}
+                />
+              </div>
+              {newPhone.trim() && (
+                <div style={{ fontSize: '11px', color: phoneOutOfRange ? '#d4a017' : '#9a9db5', marginTop: 5, paddingLeft: 2 }}>
+                  {phoneOutOfRange
+                    ? `Periksa nomor: ${phoneDigits.length} digit (diharapkan 10–13)`
+                    : phonePreview
+                  }
+                </div>
+              )}
             </div>
+
+            {/* Save */}
             <button
               onClick={handleAdd}
               disabled={saveDisabled}
@@ -184,7 +352,8 @@ export default function MembersScreen() {
                 transition: 'box-shadow 0.07s, transform 0.07s, opacity 0.15s',
               }}
             >
-              <UserPlus size={15} /> Simpan Anggota
+              <UserPlus size={15} />
+              {dupWarn ? 'Tetap Simpan' : 'Simpan Anggota'}
             </button>
           </div>
         </div>
@@ -196,6 +365,7 @@ export default function MembersScreen() {
         <input
           type="text"
           placeholder="Cari nama atau nomor HP..."
+          aria-label="Cari nama atau nomor HP"
           value={search}
           onChange={e => setSearch(e.target.value)}
           style={{ ...neuInput, paddingLeft: 38, paddingRight: search ? 36 : 14 }}
@@ -203,6 +373,7 @@ export default function MembersScreen() {
         {search && (
           <button
             onClick={() => setSearch('')}
+            aria-label="Bersihkan pencarian"
             style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 'none', cursor: 'pointer', padding: 4 }}
           >
             <X size={13} color="#9a9db5" />
@@ -210,59 +381,130 @@ export default function MembersScreen() {
         )}
       </div>
 
-      {/* Count */}
-      <div style={{ fontSize: '11px', color: '#9a9db5' }}>
-        {search.trim()
-          ? `${filtered.length} dari ${members.length} anggota`
-          : `${members.length} anggota`}
+      {/* Count + sort toggle */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <span style={{ fontSize: '12px', color: '#4a4e69' }}>
+          {search.trim()
+            ? `${filtered.length} dari ${effectiveTotal} anggota`
+            : `${effectiveTotal} anggota`}
+        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          {(['az', 'newest'] as const).map((mode, i) => (
+            <React.Fragment key={mode}>
+              {i > 0 && <span style={{ fontSize: '11px', color: '#c0c4d0', userSelect: 'none' }}>·</span>}
+              <button
+                onClick={() => setSortOrder(mode)}
+                aria-pressed={sortOrder === mode}
+                style={{
+                  fontSize: '11px',
+                  fontWeight: sortOrder === mode ? 700 : 400,
+                  color: sortOrder === mode ? '#4a4e69' : '#c0c4d0',
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  padding: '14px 8px', lineHeight: 1,
+                  transition: 'color 0.15s',
+                }}
+              >
+                {mode === 'az' ? 'A-Z' : 'Terbaru'}
+              </button>
+            </React.Fragment>
+          ))}
+        </div>
       </div>
 
-      {/* Member list */}
-      <div style={{
-        flex: 1,
-        minHeight: 0,
-        overflow: 'auto',
-        overscrollBehavior: 'contain',
-        WebkitOverflowScrolling: 'touch',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 12,
-        margin: '0 -8px',
-        padding: '4px 8px var(--app-content-bottom)',
-      }}>
-        {filtered.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '40px 20px' }}>
-            <div style={{
-              width: 52, height: 52, borderRadius: '14px',
+      {/* Soft-delete undo toast */}
+      {pendingDelete && (
+        <div
+          aria-live="polite"
+          aria-atomic="true"
+          style={{
+            background: '#eef0f5',
+            boxShadow: SHD_RAISED_STD,
+            borderRadius: '12px',
+            padding: '10px 14px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            flexShrink: 0,
+            animation: 'toast-in 180ms cubic-bezier(0.16, 1, 0.3, 1) both',
+          }}
+        >
+          <Trash2 size={13} color="#c0c4d0" style={{ flexShrink: 0 }} />
+          <span style={{
+            flex: 1, fontSize: '12px', color: '#9a9db5',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>
+            {pendingDelete.name} dihapus
+          </span>
+          <button
+            onClick={handleUndoDelete}
+            style={{
+              height: 40, padding: '0 14px', borderRadius: '11px', border: 'none', cursor: 'pointer',
               background: '#eef0f5',
               boxShadow: SHD_RAISED_STD,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              margin: '0 auto 14px',
-            }}>
-              {search ? <Search size={22} color="#c0c4d0" /> : <Users size={22} color="#c0c4d0" />}
-            </div>
-            <div style={{ fontSize: '13px', fontWeight: 600, color: '#9a9db5' }}>
-              {search ? 'Tidak ditemukan' : 'Belum ada anggota'}
-            </div>
-            {!search && (
-              <div style={{ fontSize: '11px', color: '#c0c4d0', marginTop: 5 }}>
-                Klik "Tambah" untuk menambahkan anggota pertama
+              color: '#4a90d9', fontSize: '12px', fontWeight: 700,
+              flexShrink: 0,
+            }}
+          >
+            Urungkan
+          </button>
+        </div>
+      )}
+
+      {/* Member list */}
+      <ul
+        role="list"
+        style={{
+          flex: 1,
+          minHeight: 0,
+          overflow: 'auto',
+          overscrollBehavior: 'contain',
+          WebkitOverflowScrolling: 'touch',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 12,
+          margin: '0 -8px',
+          padding: '4px 8px var(--app-content-bottom)',
+          listStyle: 'none',
+        }}
+      >
+        {filtered.length === 0 ? (
+          <li>
+            <div style={{ textAlign: 'center', padding: '40px 20px' }}>
+              <div style={{
+                width: 52, height: 52, borderRadius: '14px',
+                background: '#eef0f5',
+                boxShadow: SHD_RAISED_STD,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                margin: '0 auto 14px',
+              }}>
+                {search ? <Search size={22} color="#c0c4d0" /> : <Users size={22} color="#c0c4d0" />}
               </div>
-            )}
-          </div>
+              <div style={{ fontSize: '13px', fontWeight: 600, color: '#4a4e69' }}>
+                {search ? 'Tidak ditemukan' : 'Belum ada anggota'}
+              </div>
+              {!search && (
+                <div style={{ fontSize: '11px', color: '#c0c4d0', marginTop: 5 }}>
+                  Klik "Tambah" untuk menambahkan anggota pertama
+                </div>
+              )}
+            </div>
+          </li>
         ) : (
           filtered.map(m => {
             const color = getAvatarColor(m.id);
             const confirming = deleteConfirm === m.id;
+            const justAdded = recentlyAddedId === m.id;
             return (
+              <li key={m.id} style={{ listStyle: 'none', flexShrink: 0 }}>
               <div
-                key={m.id}
+                ref={justAdded ? recentlyAddedRef : undefined}
                 style={{
                   background: '#eef0f5',
                   boxShadow: SHD_RAISED_LIST,
                   borderRadius: '14px',
                   padding: '12px 14px',
                   display: 'flex', alignItems: 'center', gap: 12,
+                  ...(justAdded && { animation: 'card-added 1400ms cubic-bezier(0.16, 1, 0.3, 1) both' }),
                 }}
               >
                 {/* Avatar */}
@@ -276,10 +518,15 @@ export default function MembersScreen() {
                 </div>
 
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: '14px', fontWeight: 700, color: '#2d3142', marginBottom: 3 }}>{m.name}</div>
+                  <div style={{
+                    fontSize: '14px', fontWeight: 700, color: '#2d3142', marginBottom: 3,
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  }}>
+                    {m.name}
+                  </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                     <Phone size={10} color="#c0c4d0" />
-                    <span style={{ fontSize: '11px', color: '#9a9db5' }}>
+                    <span style={{ fontSize: '11px', color: '#4a4e69' }}>
                       {m.phone ? formatPhone(m.phone) : '—'}
                     </span>
                   </div>
@@ -287,12 +534,13 @@ export default function MembersScreen() {
 
                 {/* Delete */}
                 {confirming ? (
-                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
                     <span style={{ fontSize: '11px', color: '#9a9db5' }}>Hapus?</span>
                     <button
                       onClick={() => handleDelete(m.id)}
+                      aria-label="Konfirmasi hapus"
                       style={{
-                        width: 32, height: 32, borderRadius: '9px', border: 'none', cursor: 'pointer',
+                        width: 44, height: 44, borderRadius: '9px', border: 'none', cursor: 'pointer',
                         background: '#d4183d',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                       }}
@@ -301,8 +549,9 @@ export default function MembersScreen() {
                     </button>
                     <button
                       onClick={() => setDeleteConfirm(null)}
+                      aria-label="Batal hapus"
                       style={{
-                        width: 32, height: 32, borderRadius: '9px', border: 'none', cursor: 'pointer',
+                        width: 44, height: 44, borderRadius: '9px', border: 'none', cursor: 'pointer',
                         background: '#eef0f5',
                         boxShadow: SHD_RAISED_STD,
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -314,8 +563,9 @@ export default function MembersScreen() {
                 ) : (
                   <button
                     onClick={() => setDeleteConfirm(m.id)}
+                    aria-label={`Hapus ${m.name}`}
                     style={{
-                      width: 32, height: 32, borderRadius: '9px', border: 'none', cursor: 'pointer',
+                      width: 44, height: 44, borderRadius: '9px', border: 'none', cursor: 'pointer',
                       background: '#eef0f5',
                       boxShadow: SHD_RAISED_STD,
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -325,10 +575,11 @@ export default function MembersScreen() {
                   </button>
                 )}
               </div>
+              </li>
             );
           })
         )}
-      </div>
+      </ul>
     </div>
   );
 }
