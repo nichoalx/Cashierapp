@@ -66,7 +66,7 @@ function AppShell() {
       overscrollBehavior: 'none',
       background: '#dfe3ea',
       display: 'flex',
-      alignItems: 'center',
+      alignItems: 'stretch',
       justifyContent: 'center',
     }}>
       <div style={{
