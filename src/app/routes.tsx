@@ -33,7 +33,6 @@ function ProtectedRoot() {
               display: 'flex',
               flexDirection: 'column',
               overflow: 'hidden',
-              paddingTop: 'env(safe-area-inset-top, 0px)',
             }}
           >
             <Outlet />
@@ -66,7 +65,7 @@ function AppShell() {
       overscrollBehavior: 'none',
       background: '#dfe3ea',
       display: 'flex',
-      alignItems: 'stretch',
+      alignItems: 'center',
       justifyContent: 'center',
     }}>
       <div style={{
