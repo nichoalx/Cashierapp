@@ -1,18 +1,27 @@
-import React, { useRef, useEffect } from 'react';
-import { useAppStore, formatRupiah } from '../store';
+import { useQuery } from 'convex/react';
+import { api } from '../../../convex/_generated/api';
+import { formatRupiah } from '../store';
 
 interface PriceTickerProps {
   onOpenPriceEditor: () => void;
 }
 
 export function PriceTicker({ onOpenPriceEditor }: PriceTickerProps) {
-  const { soybeanProducts, otherProducts, plasticSizes, eceranPrice } = useAppStore();
+  const rawProducts = useQuery(api.products.listWithPrices);
 
-  const items = [
-    ...soybeanProducts.map(p => ({ label: p.name, price: `${formatRupiah(p.price)}/kg`, color: p.color })),
-    { label: 'E', price: `${formatRupiah(eceranPrice)}/kg`, color: '#9b6dff' },
-    ...otherProducts.map(p => ({ label: p.name, price: `${formatRupiah(p.price)}/pcs`, color: p.color })),
-    ...plasticSizes.map(p => ({ label: `P ${p.size}`, price: `${formatRupiah(p.price)}/pcs`, color: '#38b2ac' })),
+  const items = rawProducts == null ? [] : [
+    ...rawProducts
+      .filter(p => p.unit === 'kg' && p.name !== 'E')
+      .map(p => ({ label: p.name, price: `${formatRupiah(p.price)}/kg`, color: p.color })),
+    ...(rawProducts.find(p => p.name === 'E')
+      ? [{ label: 'E', price: `${formatRupiah(rawProducts.find(p => p.name === 'E')!.price)}/kg`, color: '#9b6dff' }]
+      : []),
+    ...rawProducts
+      .filter(p => p.unit === 'pcs' && p.variants.length === 0)
+      .map(p => ({ label: p.name, price: `${formatRupiah(p.price)}/pcs`, color: p.color })),
+    ...rawProducts
+      .filter(p => p.variants.length > 0)
+      .flatMap(p => p.variants.map(v => ({ label: `P ${v.variantValue}`, price: `${formatRupiah(v.price)}/pcs`, color: p.color }))),
   ];
 
   const content = [...items, ...items];
@@ -33,28 +42,26 @@ export function PriceTicker({ onOpenPriceEditor }: PriceTickerProps) {
           HARGA
         </span>
         <div className="overflow-hidden flex-1 relative">
-          <div
-            className="flex gap-4 items-center"
-            style={{
-              animation: 'ticker-scroll 28s linear infinite',
-              width: 'max-content',
-            }}
-          >
-            {content.map((item, i) => (
-              <span key={i} className="flex items-center gap-1.5 shrink-0">
-                <span
-                  style={{
-                    width: 7, height: 7, borderRadius: '50%',
-                    background: item.color, display: 'inline-block', flexShrink: 0,
-                  }}
-                />
-                <span style={{ fontSize: '12px', color: '#4a4e69', whiteSpace: 'nowrap' }}>
-                  <strong>{item.label}</strong> {item.price}
+          {items.length === 0 ? (
+            <span style={{ fontSize: '12px', color: '#c0c4d0' }}>
+              {rawProducts == null ? 'Memuat...' : 'Belum ada produk'}
+            </span>
+          ) : (
+            <div
+              className="flex gap-4 items-center"
+              style={{ animation: 'ticker-scroll 28s linear infinite', width: 'max-content' }}
+            >
+              {content.map((item, i) => (
+                <span key={i} className="flex items-center gap-1.5 shrink-0">
+                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: item.color, display: 'inline-block', flexShrink: 0 }} />
+                  <span style={{ fontSize: '12px', color: '#4a4e69', whiteSpace: 'nowrap' }}>
+                    <strong>{item.label}</strong> {item.price}
+                  </span>
+                  <span style={{ color: '#c0c4d0', fontSize: '12px' }}>•</span>
                 </span>
-                <span style={{ color: '#c0c4d0', fontSize: '12px' }}>•</span>
-              </span>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
         <span style={{ fontSize: '9px', color: '#b0b4c8', flexShrink: 0 }}>▶ Edit</span>
       </div>

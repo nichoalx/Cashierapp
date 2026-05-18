@@ -1,5 +1,8 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { X, MessageSquare, User, Check } from 'lucide-react';
+import { useQuery, useMutation } from 'convex/react';
+import { api } from '../../../convex/_generated/api';
+import { Id } from '../../../convex/_generated/dataModel';
 import { useAppStore, formatRupiah, TransactionItem } from '../store';
 import { PriceTicker } from '../components/PriceTicker';
 import { PriceEditorModal } from '../components/PriceEditorModal';
@@ -10,7 +13,7 @@ type Step =
   | { type: 'idle' }
   | { type: 'plastic_size' }
   | { type: 'eceran_brand' }
-  | { type: 'quantity'; productId: string; productName: string; productShortName: string; unit: string; unitPrice: number; color: string; plasticSize?: string; isSoybean?: boolean; isEceran?: boolean };
+  | { type: 'quantity'; productId: string; variantId?: string; productName: string; productShortName: string; unit: string; unitPrice: number; color: string; plasticSize?: string; isSoybean?: boolean; isEceran?: boolean };
 
 function genId() { return Math.random().toString(36).slice(2, 10); }
 
@@ -87,10 +90,44 @@ function RemarksModal({ value, onSave, onClose }: {
 
 export default function HomeScreen() {
   const {
-    soybeanProducts, plasticSizes, plasticBasePrice, otherProducts, addTransaction, members, eceranPrice,
     cartItems: items, cartRemarks: remarks, cartMember: selectedMember,
     setCartItems, setCartRemarks, setCartMember,
   } = useAppStore();
+
+  const rawProducts = useQuery(api.products.listWithPrices);
+  const rawMembers  = useQuery(api.members.list);
+  const createTx    = useMutation(api.transactions.create);
+
+  const soybeanProducts = useMemo(() =>
+    (rawProducts ?? []).filter(p => p.unit === 'kg' && p.name !== 'E').map(p => ({
+      id: p._id, name: p.name, fullName: p.fullName, color: p.color, price: p.price,
+    })),
+    [rawProducts]
+  );
+  const eceranPrice = useMemo(() =>
+    (rawProducts ?? []).find(p => p.name === 'E')?.price ?? 0,
+    [rawProducts]
+  );
+  const plasticProduct = useMemo(() =>
+    (rawProducts ?? []).find(p => p.unit === 'pcs' && p.variants.length > 0),
+    [rawProducts]
+  );
+  const plasticSizes = useMemo(() =>
+    plasticProduct?.variants.map(v => ({ id: v._id, size: v.variantValue, price: v.price })) ?? [],
+    [plasticProduct]
+  );
+  const otherProducts = useMemo(() =>
+    (rawProducts ?? []).filter(p => p.unit === 'pcs' && p.variants.length === 0).map(p => ({
+      id: p._id, name: p.name, fullName: p.fullName, color: p.color, price: p.price,
+    })),
+    [rawProducts]
+  );
+  const members = useMemo(() =>
+    (rawMembers ?? []).map(m => ({
+      id: m._id, name: m.name, phone: m.phone ?? '', createdAt: new Date(m._creationTime),
+    })),
+    [rawMembers]
+  );
   const setItems = setCartItems;
   const setRemarks = setCartRemarks;
   const setSelectedMember = setCartMember;
@@ -150,9 +187,9 @@ export default function HomeScreen() {
   const handlePlasticSizeClick = useCallback((sizeId: string) => {
     const ps = plasticSizes.find(x => x.id === sizeId);
     if (!ps) return;
-    setStep({ type: 'quantity', productId: 'plastic', productName: `Plastik ${ps.size}`, productShortName: 'P', unit: 'pcs', unitPrice: plasticBasePrice, color: PLASTIC_COLOR, plasticSize: ps.size });
+    setStep({ type: 'quantity', productId: 'plastic', variantId: ps.id, productName: `Plastik ${ps.size}`, productShortName: 'P', unit: 'pcs', unitPrice: ps.price, color: PLASTIC_COLOR, plasticSize: ps.size });
     setInputValue('0');
-  }, [plasticSizes, plasticBasePrice]);
+  }, [plasticSizes]);
 
   const effectivePrice = selectedProduct
     ? (selectedProduct.isSoybean && selectedProduct.isEceran ? eceranPrice : selectedProduct.unitPrice)
@@ -164,9 +201,14 @@ export default function HomeScreen() {
     const qty = parseFloat(inputValue);
     const useEceran = !!(selectedProduct.isSoybean && selectedProduct.isEceran);
     const price = useEceran ? eceranPrice : selectedProduct.unitPrice;
+    // For plastic, substitute the real Convex product ID; sentinel 'plastic' stays for UI toggle checks
+    const resolvedProductId = selectedProduct.productId === 'plastic'
+      ? (plasticProduct?._id ?? selectedProduct.productId)
+      : selectedProduct.productId;
     const item: TransactionItem = {
       id: genId(),
-      productId: selectedProduct.productId,
+      productId: resolvedProductId,
+      variantId: selectedProduct.variantId,
       productName: useEceran ? `Eceran (${selectedProduct.productShortName})` : selectedProduct.productName,
       productShortName: useEceran ? `${selectedProduct.productShortName} · E` : selectedProduct.productShortName,
       quantity: qty, unit: selectedProduct.unit,
@@ -178,7 +220,7 @@ export default function HomeScreen() {
     setItems([...items, item]);
     setStep({ type: 'idle' });
     setInputValue('0');
-  }, [selectedProduct, inputValue, items, eceranPrice]);
+  }, [selectedProduct, inputValue, items, eceranPrice, plasticProduct]);
 
   const handleComplete = useCallback(() => {
     if (items.length === 0) return;
@@ -195,12 +237,22 @@ export default function HomeScreen() {
     if (phaseTimerRef.current) clearTimeout(phaseTimerRef.current);
     phaseTimerRef.current = setTimeout(() => setUndoVisible(true), 600);
     pendingTimerRef.current = setTimeout(() => {
-      addTransaction(stash.items, stash.remarks || undefined, stash.memberId, stash.memberName);
+      createTx({
+        items: stash.items.map(item => ({
+          productId: item.productId as Id<'products'>,
+          variantId: item.variantId as Id<'productVariants'> | undefined,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          totalAmount: item.total,
+        })),
+        remarks: stash.remarks || undefined,
+        memberId: stash.memberId as Id<'members'> | undefined,
+      }).catch(console.error);
       setPendingComplete(null);
       setCompletedFlash(false);
       setUndoVisible(false);
     }, 1500);
-  }, [items, remarks, selectedMember, addTransaction]);
+  }, [items, remarks, selectedMember, createTx]);
 
   const handleUndo = useCallback(() => {
     if (pendingTimerRef.current) clearTimeout(pendingTimerRef.current);

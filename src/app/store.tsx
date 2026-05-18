@@ -25,6 +25,7 @@ export interface OtherProduct {
 export interface TransactionItem {
   id: string;
   productId: string;
+  variantId?: string;
   productName: string;
   productShortName: string;
   quantity: number;

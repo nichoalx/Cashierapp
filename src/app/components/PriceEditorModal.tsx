@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { X, Plus, Trash2 } from 'lucide-react';
-import { useAppStore } from '../store';
+import { useQuery, useMutation } from 'convex/react';
+import { api } from '../../../convex/_generated/api';
+import { Id } from '../../../convex/_generated/dataModel';
 
 interface Props {
   onClose: () => void;
@@ -9,6 +11,12 @@ interface Props {
 const SHD_RAISED_STD    = '4px 4px 9px #c8cad1, -4px -4px 9px #ffffff';
 const SHD_RECESSED      = 'inset 3px 3px 7px #c8cad1, inset -3px -3px 7px #ffffff';
 const SHD_ACTION_RAISED = '4px 4px 10px rgba(0,0,0,0.16), -3px -3px 8px rgba(255,255,255,0.5)';
+
+const PRESET_COLORS = [
+  '#f5903d', '#4a90d9', '#52b96a', '#e05a6a',
+  '#9b6dff', '#38b2ac', '#d4a017', '#e84393',
+  '#00bcd4', '#8bc34a', '#ff6b35', '#673ab7',
+];
 
 const neuInput: React.CSSProperties = {
   background: '#eef0f5',
@@ -23,35 +31,71 @@ const neuInput: React.CSSProperties = {
 };
 
 export function PriceEditorModal({ onClose }: Props) {
-  const {
-    soybeanProducts, plasticBasePrice, otherProducts, eceranPrice,
-    updateSoybeanPrice, updateOtherPrice, updatePlasticBasePrice, updateEceranPrice,
-    addSoybeanProduct, removeSoybeanProduct,
-    addPlasticSize, removePlasticSize, plasticSizes,
-  } = useAppStore();
+  const rawProducts = useQuery(api.products.listWithPrices);
+
+  const setPrice          = useMutation(api.products.updatePrice);
+  const setColor          = useMutation(api.products.updateColor);
+  const createSoybean     = useMutation(api.products.addSoybean);
+  const deactivateProduct = useMutation(api.products.deactivate);
+  const setAllVariant     = useMutation(api.products.updateAllVariantPrices);
+  const createVariant     = useMutation(api.products.addVariant);
+  const deleteVariant     = useMutation(api.products.removeVariant);
+
+  const soybeanProducts = useMemo(() =>
+    (rawProducts ?? []).filter(p => p.unit === 'kg' && p.name !== 'E'),
+    [rawProducts]
+  );
+  const eceranProduct = useMemo(() =>
+    (rawProducts ?? []).find(p => p.name === 'E'),
+    [rawProducts]
+  );
+  const plasticProduct = useMemo(() =>
+    (rawProducts ?? []).find(p => p.unit === 'pcs' && p.variants.length > 0),
+    [rawProducts]
+  );
+  const plasticDisplayPrice = plasticProduct?.variants[0]?.price ?? plasticProduct?.price ?? 0;
+  const otherProducts = useMemo(() =>
+    (rawProducts ?? []).filter(p => p.unit === 'pcs' && p.variants.length === 0),
+    [rawProducts]
+  );
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
   }, [onClose]);
-  const [newSoyName, setNewSoyName]       = useState('');
-  const [newSoyFull, setNewSoyFull]       = useState('');
-  const [newSoyPrice, setNewSoyPrice]     = useState('');
+
+  const [savedKey, setSavedKey] = useState<string | null>(null);
+  const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const confirm = (key: string) => {
+    if (savedTimer.current) clearTimeout(savedTimer.current);
+    setSavedKey(null);
+    requestAnimationFrame(() => {
+      setSavedKey(key);
+      savedTimer.current = setTimeout(() => setSavedKey(null), 1800);
+    });
+  };
+
+  const [newSoyName, setNewSoyName]   = useState('');
+  const [newSoyFull, setNewSoyFull]   = useState('');
+  const [newSoyPrice, setNewSoyPrice] = useState('');
+  const [newSoyColor, setNewSoyColor] = useState(PRESET_COLORS[0]);
   const [newPlasticSize, setNewPlasticSize] = useState('');
-  const [activeTab, setActiveTab]         = useState<'soybean' | 'other'>('soybean');
-  const [showAddSoy, setShowAddSoy]       = useState(false);
-  const [showAddSize, setShowAddSize]     = useState(false);
+  const [activeTab, setActiveTab]     = useState<'soybean' | 'other'>('soybean');
+  const [showAddSoy, setShowAddSoy]   = useState(false);
+  const [showAddSize, setShowAddSize] = useState(false);
+  const [colorPickerFor, setColorPickerFor] = useState<string | null>(null);
 
   const switchTab = (tab: 'soybean' | 'other') => {
     setActiveTab(tab);
     setShowAddSoy(false);
     setShowAddSize(false);
+    setColorPickerFor(null);
   };
 
   const closeSoyForm = () => {
     setShowAddSoy(false);
-    setNewSoyName(''); setNewSoyFull(''); setNewSoyPrice('');
+    setNewSoyName(''); setNewSoyFull(''); setNewSoyPrice(''); setNewSoyColor(PRESET_COLORS[0]);
   };
 
   const closeSizeForm = () => {
@@ -69,6 +113,12 @@ export function PriceEditorModal({ onClose }: Props) {
         @keyframes form-expand {
           from { opacity: 0; transform: translateY(-5px); }
           to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes fade-confirm {
+          0%   { opacity: 0; transform: translateY(2px); }
+          20%  { opacity: 1; transform: translateY(0); }
+          70%  { opacity: 1; }
+          100% { opacity: 0; }
         }
         @media (prefers-reduced-motion: reduce) {
           *, *::before, *::after {
@@ -136,35 +186,81 @@ export function PriceEditorModal({ onClose }: Props) {
             {activeTab === 'soybean' && (
               <div className="flex flex-col gap-3">
                 {soybeanProducts.map(p => (
-                  <div key={p.id} className="flex items-center gap-3">
-                    <div style={{ width: 10, height: 10, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: '11px', color: '#9a9db5' }}>{p.fullName}</div>
-                      <div style={{ fontSize: '13px', fontWeight: 600, color: '#2d3142' }}>{p.name}</div>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span style={{ fontSize: '11px', color: '#9a9db5' }}>Rp</span>
-                      <input
-                        type="number"
-                        defaultValue={p.price}
-                        style={{ ...neuInput, width: 100, textAlign: 'right' }}
-                        onBlur={e => updateSoybeanPrice(p.id, parseFloat(e.target.value) || p.price)}
+                  <div key={p._id}>
+                    <div className="flex items-center gap-3">
+                      {/* Color dot — tap to open picker */}
+                      <button
+                        onClick={() => setColorPickerFor(colorPickerFor === p._id ? null : p._id)}
+                        style={{
+                          width: 22, height: 22, borderRadius: '50%',
+                          background: p.color, flexShrink: 0,
+                          border: colorPickerFor === p._id ? '2.5px solid #2d3142' : '2.5px solid transparent',
+                          boxShadow: colorPickerFor === p._id ? `0 0 0 1.5px #eef0f5, ${SHD_RAISED_STD}` : 'none',
+                          cursor: 'pointer', padding: 0,
+                          transition: 'box-shadow 0.12s, border-color 0.12s',
+                        }}
                       />
-                      <span style={{ fontSize: '11px', color: '#9a9db5' }}>/kg</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: '11px', color: '#9a9db5' }}>{p.fullName}</div>
+                        <div style={{ fontSize: '13px', fontWeight: 600, color: '#2d3142' }}>{p.name}</div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ fontSize: '11px', color: '#9a9db5' }}>Rp</span>
+                        <input
+                          type="number"
+                          defaultValue={p.price}
+                          key={`${p._id}-${p.price}`}
+                          style={{ ...neuInput, width: 100, textAlign: 'right' }}
+                          onBlur={e => setPrice({ productId: p._id as Id<'products'>, price: parseFloat(e.target.value) || p.price }).then(() => confirm(`price-${p._id}`)).catch(console.error)}
+                        />
+                        <span style={{ fontSize: '11px', color: '#9a9db5' }}>/kg</span>
+                        {savedKey === `price-${p._id}` && (
+                          <span style={{ fontSize: '12px', color: '#52b96a', fontWeight: 700, animation: 'fade-confirm 1.8s ease both' }}>✓</span>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => deactivateProduct({ productId: p._id as Id<'products'> }).catch(console.error)}
+                        style={{ color: '#d4183d', background: 'transparent', border: 'none', padding: 4, cursor: 'pointer' }}
+                      >
+                        <Trash2 size={14} />
+                      </button>
                     </div>
-                    <button
-                      onClick={() => removeSoybeanProduct(p.id)}
-                      style={{ color: '#d4183d', background: 'transparent', border: 'none', padding: 4, cursor: 'pointer' }}
-                    >
-                      <Trash2 size={14} />
-                    </button>
+
+                    {/* Inline color picker */}
+                    {colorPickerFor === p._id && (
+                      <div style={{
+                        display: 'flex', flexWrap: 'wrap', gap: 8,
+                        padding: '10px 12px', marginTop: 6,
+                        background: '#eef0f5', boxShadow: SHD_RECESSED,
+                        borderRadius: '10px',
+                        animation: 'form-expand 180ms cubic-bezier(0.16, 1, 0.3, 1) both',
+                      }}>
+                        {PRESET_COLORS.map(color => (
+                          <button
+                            key={color}
+                            onClick={() => {
+                              setColor({ productId: p._id as Id<'products'>, color }).catch(console.error);
+                              setColorPickerFor(null);
+                            }}
+                            style={{
+                              width: 26, height: 26, borderRadius: '50%',
+                              background: color, border: 'none', cursor: 'pointer', padding: 0,
+                              outline: p.color === color ? `2.5px solid #2d3142` : 'none',
+                              outlineOffset: 2,
+                              transform: p.color === color ? 'scale(1.15)' : 'scale(1)',
+                              transition: 'transform 0.1s',
+                            }}
+                          />
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
 
-                {/* Eceran price — fixed modifier, not a product */}
+                {/* Eceran price */}
                 <div style={{ height: 1, background: '#dde0ea', margin: '2px 0' }} />
                 <div className="flex items-center gap-3">
-                  <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#9b6dff', flexShrink: 0 }} />
+                  <div style={{ width: 22, height: 22, borderRadius: '50%', background: '#9b6dff', flexShrink: 0 }} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: '11px', color: '#9a9db5' }}>Harga Eceran</div>
                     <div style={{ fontSize: '13px', fontWeight: 600, color: '#2d3142' }}>E — Semua Merek</div>
@@ -173,17 +269,23 @@ export function PriceEditorModal({ onClose }: Props) {
                     <span style={{ fontSize: '11px', color: '#9a9db5' }}>Rp</span>
                     <input
                       type="number"
-                      defaultValue={eceranPrice}
-                      key={eceranPrice}
+                      defaultValue={eceranProduct?.price ?? 0}
+                      key={eceranProduct?.price}
                       style={{ ...neuInput, width: 100, textAlign: 'right' }}
-                      onBlur={e => updateEceranPrice(parseFloat(e.target.value) || eceranPrice)}
+                      onBlur={e => {
+                        if (!eceranProduct) return;
+                        setPrice({ productId: eceranProduct._id as Id<'products'>, price: parseFloat(e.target.value) || eceranProduct.price }).then(() => confirm('eceran')).catch(console.error);
+                      }}
                     />
                     <span style={{ fontSize: '11px', color: '#9a9db5' }}>/kg</span>
+                    {savedKey === 'eceran' && (
+                      <span style={{ fontSize: '12px', color: '#52b96a', fontWeight: 700, animation: 'fade-confirm 1.8s ease both' }}>✓</span>
+                    )}
                   </div>
                 </div>
                 <div style={{ height: 1, background: '#dde0ea', margin: '2px 0' }} />
 
-                {/* Add new soybean — collapsed by default */}
+                {/* Add new soybean */}
                 {showAddSoy ? (
                   <div style={{
                     background: '#eef0f5', boxShadow: SHD_RECESSED,
@@ -201,12 +303,30 @@ export function PriceEditorModal({ onClose }: Props) {
                         <input placeholder="Kode (MRB)" style={{ ...neuInput, flex: 1 }} value={newSoyName} onChange={e => setNewSoyName(e.target.value.toUpperCase())} autoFocus />
                         <input placeholder="Nama Lengkap" style={{ ...neuInput, flex: 2 }} value={newSoyFull} onChange={e => setNewSoyFull(e.target.value)} />
                       </div>
+                      {/* Color picker row */}
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, padding: '6px 2px' }}>
+                        {PRESET_COLORS.map(color => (
+                          <button
+                            key={color}
+                            type="button"
+                            onClick={() => setNewSoyColor(color)}
+                            style={{
+                              width: 24, height: 24, borderRadius: '50%',
+                              background: color, border: 'none', cursor: 'pointer', padding: 0,
+                              outline: newSoyColor === color ? `2.5px solid #2d3142` : 'none',
+                              outlineOffset: 2,
+                              transform: newSoyColor === color ? 'scale(1.2)' : 'scale(1)',
+                              transition: 'transform 0.1s',
+                            }}
+                          />
+                        ))}
+                      </div>
                       <div className="flex gap-2">
                         <input type="number" placeholder="Harga/kg" style={{ ...neuInput, flex: 2 }} value={newSoyPrice} onChange={e => setNewSoyPrice(e.target.value)} />
                         <button
                           onClick={() => {
                             if (newSoyName && newSoyFull && newSoyPrice) {
-                              addSoybeanProduct(newSoyName, newSoyFull, parseFloat(newSoyPrice));
+                              createSoybean({ name: newSoyName, fullName: newSoyFull, color: newSoyColor, price: parseFloat(newSoyPrice) }).catch(console.error);
                               closeSoyForm();
                             }
                           }}
@@ -244,102 +364,115 @@ export function PriceEditorModal({ onClose }: Props) {
             {activeTab === 'other' && (
               <div className="flex flex-col gap-3">
 
-                {/* Plastic — single row */}
+                {/* Plastic */}
                 <div>
                   <div style={{ fontSize: '10px', color: '#9a9db5', letterSpacing: '0.06em', marginBottom: 8, fontWeight: 600 }}>PLASTIK</div>
-                  <div className="flex items-center gap-3">
-                    <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#38b2ac', flexShrink: 0 }} />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: '11px', color: '#9a9db5' }}>Semua ukuran</div>
-                      <div style={{ fontSize: '13px', fontWeight: 600, color: '#2d3142' }}>P — Plastik</div>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span style={{ fontSize: '11px', color: '#9a9db5' }}>Rp</span>
-                      <input
-                        type="number"
-                        defaultValue={plasticBasePrice}
-                        key={plasticBasePrice}
-                        style={{ ...neuInput, width: 100, textAlign: 'right' }}
-                        onBlur={e => updatePlasticBasePrice(parseFloat(e.target.value) || plasticBasePrice)}
-                      />
-                      <span style={{ fontSize: '11px', color: '#9a9db5' }}>/pcs</span>
-                    </div>
-                  </div>
-
-                  {/* Plastic size management */}
-                  <div style={{ background: '#eef0f5', boxShadow: SHD_RECESSED, borderRadius: '10px', padding: '10px', marginTop: 10 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <div style={{ fontSize: '10px', color: '#9a9db5', fontWeight: 600 }}>UKURAN</div>
-                      <button
-                        onClick={() => showAddSize ? closeSizeForm() : setShowAddSize(true)}
-                        style={{
-                          background: '#eef0f5',
-                          boxShadow: showAddSize ? SHD_RECESSED : SHD_RAISED_STD,
-                          border: 'none', borderRadius: '7px', cursor: 'pointer',
-                          width: 22, height: 22,
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          transition: 'box-shadow 0.12s',
-                        }}
-                      >
-                        {showAddSize ? <X size={10} color="#9a9db5" /> : <Plus size={10} color="#9a9db5" />}
-                      </button>
-                    </div>
-
-                    {showAddSize && (
-                      <div style={{ animation: 'form-expand 200ms cubic-bezier(0.16, 1, 0.3, 1) both', marginTop: 8 }}>
-                        {plasticSizes.length > 0 && (
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-                            {plasticSizes.map(ps => (
-                              <div key={ps.id} style={{
-                                display: 'flex', alignItems: 'center', gap: 4,
-                                background: '#eef0f5', boxShadow: SHD_RAISED_STD,
-                                borderRadius: '8px', padding: '4px 8px',
-                              }}>
-                                <span style={{ fontSize: '11px', fontWeight: 600, color: '#38b2ac' }}>{ps.size}</span>
-                                <button onClick={() => removePlasticSize(ps.id)} style={{ background: 'transparent', border: 'none', color: '#d4183d', cursor: 'pointer', padding: 0, lineHeight: 1 }}>
-                                  <X size={10} />
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                        <div className="flex gap-2">
+                  {plasticProduct ? (
+                    <>
+                      <div className="flex items-center gap-3">
+                        <div style={{ width: 22, height: 22, borderRadius: '50%', background: '#38b2ac', flexShrink: 0 }} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: '11px', color: '#9a9db5' }}>Semua ukuran</div>
+                          <div style={{ fontSize: '13px', fontWeight: 600, color: '#2d3142' }}>P — Plastik</div>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ fontSize: '11px', color: '#9a9db5' }}>Rp</span>
                           <input
-                            placeholder="Ukuran baru (10×20)"
-                            style={{ ...neuInput, flex: 1 }}
-                            value={newPlasticSize}
-                            onChange={e => setNewPlasticSize(e.target.value)}
-                            autoFocus
+                            type="number"
+                            defaultValue={plasticDisplayPrice}
+                            key={plasticDisplayPrice}
+                            style={{ ...neuInput, width: 100, textAlign: 'right' }}
+                            onBlur={e => setAllVariant({ productId: plasticProduct._id as Id<'products'>, price: parseFloat(e.target.value) || plasticDisplayPrice }).then(() => confirm('plastic')).catch(console.error)}
                           />
+                          <span style={{ fontSize: '11px', color: '#9a9db5' }}>/pcs</span>
+                          {savedKey === 'plastic' && (
+                            <span style={{ fontSize: '12px', color: '#52b96a', fontWeight: 700, animation: 'fade-confirm 1.8s ease both' }}>✓</span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Plastic size management */}
+                      <div style={{ background: '#eef0f5', boxShadow: SHD_RECESSED, borderRadius: '10px', padding: '10px', marginTop: 10 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <div style={{ fontSize: '10px', color: '#9a9db5', fontWeight: 600 }}>UKURAN</div>
                           <button
-                            onClick={() => {
-                              if (newPlasticSize) { addPlasticSize(newPlasticSize); closeSizeForm(); }
-                            }}
+                            onClick={() => showAddSize ? closeSizeForm() : setShowAddSize(true)}
                             style={{
-                              borderRadius: '10px', background: '#38b2ac', color: '#fff', border: 'none',
-                              fontWeight: 700, padding: '0 14px',
-                              boxShadow: SHD_ACTION_RAISED,
-                              display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                              background: '#eef0f5',
+                              boxShadow: showAddSize ? SHD_RECESSED : SHD_RAISED_STD,
+                              border: 'none', borderRadius: '7px', cursor: 'pointer',
+                              width: 22, height: 22,
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
                               transition: 'box-shadow 0.12s',
                             }}
                           >
-                            <Plus size={14} />
+                            {showAddSize ? <X size={10} color="#9a9db5" /> : <Plus size={10} color="#9a9db5" />}
                           </button>
                         </div>
+
+                        {showAddSize && (
+                          <div style={{ animation: 'form-expand 200ms cubic-bezier(0.16, 1, 0.3, 1) both', marginTop: 8 }}>
+                            {plasticProduct.variants.length > 0 && (
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                                {plasticProduct.variants.map(ps => (
+                                  <div key={ps._id} style={{
+                                    display: 'flex', alignItems: 'center', gap: 4,
+                                    background: '#eef0f5', boxShadow: SHD_RAISED_STD,
+                                    borderRadius: '8px', padding: '4px 8px',
+                                  }}>
+                                    <span style={{ fontSize: '11px', fontWeight: 600, color: '#38b2ac' }}>{ps.variantValue}</span>
+                                    <button onClick={() => deleteVariant({ variantId: ps._id as Id<'productVariants'> }).catch(console.error)} style={{ background: 'transparent', border: 'none', color: '#d4183d', cursor: 'pointer', padding: 0, lineHeight: 1 }}>
+                                      <X size={10} />
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            <div className="flex gap-2">
+                              <input
+                                placeholder="Ukuran baru (10×20)"
+                                style={{ ...neuInput, flex: 1 }}
+                                value={newPlasticSize}
+                                onChange={e => setNewPlasticSize(e.target.value)}
+                                autoFocus
+                              />
+                              <button
+                                onClick={() => {
+                                  if (newPlasticSize && plasticProduct) {
+                                    createVariant({ productId: plasticProduct._id as Id<'products'>, variantValue: newPlasticSize, price: plasticDisplayPrice }).catch(console.error);
+                                    closeSizeForm();
+                                  }
+                                }}
+                                style={{
+                                  borderRadius: '10px', background: '#38b2ac', color: '#fff', border: 'none',
+                                  fontWeight: 700, padding: '0 14px',
+                                  boxShadow: SHD_ACTION_RAISED,
+                                  display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                                  transition: 'box-shadow 0.12s',
+                                }}
+                              >
+                                <Plus size={14} />
+                              </button>
+                            </div>
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
+                    </>
+                  ) : (
+                    <div style={{ fontSize: '12px', color: '#c0c4d0', textAlign: 'center', padding: '12px 0' }}>
+                      Belum ada produk plastik
+                    </div>
+                  )}
                 </div>
 
-                {/* Divider */}
                 <div style={{ height: 1, background: '#dde0ea', margin: '4px 0' }} />
 
                 {/* Other products */}
                 <div>
                   <div style={{ fontSize: '10px', color: '#9a9db5', letterSpacing: '0.06em', marginBottom: 8, fontWeight: 600 }}>PRODUK LAIN</div>
                   {otherProducts.map(p => (
-                    <div key={p.id} className="flex items-center gap-3" style={{ marginBottom: 10 }}>
-                      <div style={{ width: 10, height: 10, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
+                    <div key={p._id} className="flex items-center gap-3" style={{ marginBottom: 10 }}>
+                      <div style={{ width: 22, height: 22, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
                       <div style={{ flex: 1 }}>
                         <div style={{ fontSize: '11px', color: '#9a9db5' }}>{p.fullName}</div>
                         <div style={{ fontSize: '13px', fontWeight: 600, color: '#2d3142' }}>{p.name}</div>
@@ -349,13 +482,22 @@ export function PriceEditorModal({ onClose }: Props) {
                         <input
                           type="number"
                           defaultValue={p.price}
+                          key={`${p._id}-${p.price}`}
                           style={{ ...neuInput, width: 100, textAlign: 'right' }}
-                          onBlur={e => updateOtherPrice(p.id, parseFloat(e.target.value) || p.price)}
+                          onBlur={e => setPrice({ productId: p._id as Id<'products'>, price: parseFloat(e.target.value) || p.price }).then(() => confirm(`price-${p._id}`)).catch(console.error)}
                         />
                         <span style={{ fontSize: '11px', color: '#9a9db5' }}>/pcs</span>
+                        {savedKey === `price-${p._id}` && (
+                          <span style={{ fontSize: '12px', color: '#52b96a', fontWeight: 700, animation: 'fade-confirm 1.8s ease both' }}>✓</span>
+                        )}
                       </div>
                     </div>
                   ))}
+                  {otherProducts.length === 0 && (
+                    <div style={{ fontSize: '12px', color: '#c0c4d0', textAlign: 'center', padding: '12px 0' }}>
+                      Belum ada produk lain
+                    </div>
+                  )}
                 </div>
               </div>
             )}
