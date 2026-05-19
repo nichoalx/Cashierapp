@@ -1,5 +1,7 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { useAppStore } from '../store';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import { useQuery, useMutation } from 'convex/react';
+import { api } from '../../../convex/_generated/api';
+import { Id } from '../../../convex/_generated/dataModel';
 import { Search, UserPlus, Trash2, Phone, User, X, Users } from 'lucide-react';
 
 const SHD_RAISED_STD    = '4px 4px 9px #c8cad1, -4px -4px 9px #ffffff';
@@ -46,23 +48,45 @@ function getAvatarColor(id: string) {
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
 }
 
+interface Member {
+  id: Id<'members'>;
+  name: string;
+  phone: string;
+}
+
 export default function MembersScreen() {
-  const { members, addMember, removeMember } = useAppStore();
+  const rawMembers = useQuery(api.members.list);
+  const addMemberMutation = useMutation(api.members.add);
+  const removeMemberMutation = useMutation(api.members.remove);
+
+  const members: Member[] = useMemo(
+    () => (rawMembers ?? []).map(m => ({ id: m._id, name: m.name, phone: m.phone ?? '' })),
+    [rawMembers],
+  );
+
+  const addMember = useCallback((name: string, phone: string) => {
+    void addMemberMutation({ name, phone: phone || undefined });
+  }, [addMemberMutation]);
+
+  const removeMember = useCallback((id: Id<'members'>) => {
+    void removeMemberMutation({ memberId: id });
+  }, [removeMemberMutation]);
+
   const [search, setSearch] = useState('');
   const [showAdd, setShowAdd] = useState(false);
   const [newName, setNewName] = useState('');
   const [newPhone, setNewPhone] = useState('');
-  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<Id<'members'> | null>(null);
   const [nameError, setNameError] = useState('');
   const [savePressed, setSavePressed] = useState(false);
   const [dupWarn, setDupWarn] = useState(false);
-  const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string } | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<{ id: Id<'members'>; name: string } | null>(null);
   const [sortOrder, setSortOrder] = useState<'az' | 'newest'>('az');
 
   const phoneInputRef = useRef<HTMLInputElement>(null);
   const deleteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingDeleteRef = useRef<{ id: string; name: string } | null>(null);
-  const [recentlyAddedId, setRecentlyAddedId] = useState<string | null>(null);
+  const pendingDeleteRef = useRef<{ id: Id<'members'>; name: string } | null>(null);
+  const [recentlyAddedId, setRecentlyAddedId] = useState<Id<'members'> | null>(null);
   const prevMembersLength = useRef(members.length);
   const recentlyAddedRef = useRef<HTMLDivElement | null>(null);
 

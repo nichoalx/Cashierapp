@@ -1,6 +1,9 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { Pencil, Trash2, X, Check, ChevronDown, ChevronLeft, ChevronRight, Search, SlidersHorizontal, MessageSquare, User, Receipt, FileSpreadsheet, FileDown } from 'lucide-react';
-import { useAppStore, formatRupiah, Transaction, TransactionItem, Member } from '../store';
+import { useQuery, useMutation } from 'convex/react';
+import { api } from '../../../convex/_generated/api';
+import { Id } from '../../../convex/_generated/dataModel';
+import { formatRupiah, TransactionItem, Member } from '../store';
 import { MemberPickerModal } from '../components/MemberPickerModal';
 import { PriceTicker } from '../components/PriceTicker';
 import { PriceEditorModal } from '../components/PriceEditorModal';
@@ -23,8 +26,43 @@ function isSameDay(a: Date, b: Date) {
     a.getDate() === b.getDate();
 }
 
+function toDateStr(d: Date) {
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${m}-${day}`;
+}
+
 const MONTHS     = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const DAYS_SHORT = ['Su','Mo','Tu','We','Th','Fr','Sa'];
+
+// ─── Local types for mapped Convex data ─────────────────────────────────────
+
+interface TxItem {
+  id: string;
+  productId: string;
+  variantId?: string;
+  productName: string;
+  productShortName: string;
+  quantity: number;
+  unit: string;
+  unitPrice: number;
+  total: number;
+  color: string;
+  plasticSize?: string;
+}
+
+interface Tx {
+  id: string;
+  orderNumber: number;
+  timestamp: Date;
+  total: number;
+  remarks?: string;
+  memberId?: string;
+  memberName?: string;
+  items: TxItem[];
+}
+
+// ─── MiniCalendar ────────────────────────────────────────────────────────────
 
 function MiniCalendar({
   selectedDate, onSelect, onClose,
@@ -46,13 +84,24 @@ function MiniCalendar({
   const nextMonth = () => { if (viewMonth === 11) { setViewMonth(0); setViewYear(y => y + 1); } else setViewMonth(m => m + 1); };
 
   return (
-    <div style={{
-      position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)',
-      marginTop: 8, zIndex: 100,
-      background: '#eef0f5', borderRadius: '18px',
-      boxShadow: SHD_CALENDAR,
-      padding: '14px', width: 'min(280px, calc(100vw - 32px))',
-    }}>
+    <div
+      style={{
+        position: 'fixed', left: 0, right: 0,
+        top: 'var(--app-visual-offset-top)', height: 'var(--app-visual-height)',
+        zIndex: 200, background: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(4px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 20px',
+      }}
+      onClick={onClose}
+    >
+    <div
+      onClick={e => e.stopPropagation()}
+      style={{
+        background: '#eef0f5', borderRadius: '20px',
+        boxShadow: SHD_CALENDAR,
+        padding: '16px', width: '100%', maxWidth: 300,
+        animation: 'cal-modal-in 180ms cubic-bezier(0.16, 1, 0.3, 1) both',
+      }}
+    >
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
         <button aria-label="Bulan sebelumnya" onClick={prevMonth} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 10, color: '#9a9db5' }}>
           <ChevronLeft size={16} />
@@ -109,21 +158,12 @@ function MiniCalendar({
         Hari Ini
       </button>
     </div>
+    </div>
   );
 }
 
 function DateNavigator({ selectedDate, onChange }: { selectedDate: Date; onChange: (d: Date) => void }) {
   const [calOpen, setCalOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!calOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setCalOpen(false);
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [calOpen]);
 
   const prevDay = () => {
     const d = new Date(selectedDate); d.setDate(d.getDate() - 1); onChange(d);
@@ -139,7 +179,7 @@ function DateNavigator({ selectedDate, onChange }: { selectedDate: Date; onChang
     : `${MONTHS[selectedDate.getMonth()]} ${selectedDate.getDate()}, ${selectedDate.getFullYear()}`;
 
   return (
-    <div ref={ref} style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 6 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
       <button
         aria-label="Hari sebelumnya"
         onClick={prevDay}
@@ -192,14 +232,16 @@ function DateNavigator({ selectedDate, onChange }: { selectedDate: Date; onChang
   );
 }
 
+// ─── EditModal ───────────────────────────────────────────────────────────────
+
 interface EditModalProps {
-  transaction: Transaction;
+  transaction: Tx;
+  members: Member[];
   onClose: () => void;
   onSave: (items: TransactionItem[], remarks: string, memberId?: string, memberName?: string) => void;
 }
 
-function EditModal({ transaction, onClose, onSave }: EditModalProps) {
-  const { members } = useAppStore();
+function EditModal({ transaction, members, onClose, onSave }: EditModalProps) {
   const [items, setItems]           = useState<TransactionItem[]>(transaction.items.map(i => ({ ...i })));
   const [editRemarks, setEditRemarks] = useState(transaction.remarks ?? '');
   const [editMember, setEditMember]   = useState<Member | null>(
@@ -390,11 +432,9 @@ function EditModal({ transaction, onClose, onSave }: EditModalProps) {
   );
 }
 
-const SOYBEAN_IDS = ['mrb', 'sbs', 'bh'];
-const PLASTIC_ID  = 'plastic';
-const OTHER_IDS   = ['tempe', 'dages'];
+// ─── CSV export ──────────────────────────────────────────────────────────────
 
-function exportCSV(txs: Transaction[], date: Date) {
+function exportCSV(txs: Tx[], date: Date) {
   const pad = (n: number) => String(n).padStart(2, '0');
   const dateStr = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
   const header = 'Date,Order,Time,Product,Qty,Unit,Unit Price,Item Total,Tx Total,Member,Remarks';
@@ -421,10 +461,11 @@ function exportCSV(txs: Transaction[], date: Date) {
   document.body.removeChild(a); URL.revokeObjectURL(url);
 }
 
+// ─── Main screen ─────────────────────────────────────────────────────────────
+
 export default function TransactionLogScreen() {
-  const { transactions, deleteTransaction, updateTransaction } = useAppStore();
   const [showPriceEditor, setShowPriceEditor] = useState(false);
-  const [editingTx, setEditingTx]             = useState<Transaction | null>(null);
+  const [editingTx, setEditingTx]             = useState<Tx | null>(null);
   const [expandedId, setExpandedId]           = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm]     = useState<string | null>(null);
   const [pressedBtn, setPressedBtn]           = useState<string | null>(null);
@@ -440,6 +481,47 @@ export default function TransactionLogScreen() {
   const trackRef = useRef<HTMLDivElement>(null);
   const [summarySlide, setSummarySlide] = useState(0);
   const [savedId, setSavedId]           = useState<string | null>(null);
+
+  // ── Convex hooks ──────────────────────────────────────────────────────────
+  const rawMembers = useQuery(api.members.list);
+  const rawTxs     = useQuery(api.transactions.listByDate, { date: toDateStr(selectedDate) });
+  const updateTx   = useMutation(api.transactions.update);
+  const removeTx   = useMutation(api.transactions.remove);
+
+  const members: Member[] = useMemo(() =>
+    (rawMembers ?? []).map(m => ({
+      id: m._id, name: m.name, phone: m.phone ?? '', createdAt: new Date(m._creationTime),
+    })),
+    [rawMembers]
+  );
+
+  const transactions: Tx[] = useMemo(() => {
+    if (!rawTxs) return [];
+    return rawTxs.map(tx => ({
+      id: tx.id as string,
+      orderNumber: tx.orderNumber,
+      timestamp: new Date(tx.timestamp),
+      total: tx.total,
+      remarks: tx.remarks,
+      memberId: tx.memberId as string | undefined,
+      memberName: tx.memberName,
+      items: tx.items.map(item => ({
+        id: item.id as string,
+        productId: item.productId as string,
+        variantId: item.variantId as string | undefined,
+        productName: item.productName,
+        productShortName: item.productShortName,
+        quantity: item.quantity,
+        unit: item.unit,
+        unitPrice: item.unitPrice,
+        total: item.total,
+        color: item.color,
+        plasticSize: item.plasticSize,
+      })),
+    }));
+  }, [rawTxs]);
+
+  // ── Derived data ──────────────────────────────────────────────────────────
 
   const toggleFilter = (key: 'soybean' | 'plastic' | 'other') => {
     setActiveFilters(prev => {
@@ -467,18 +549,13 @@ export default function TransactionLogScreen() {
     };
   }, [filterOpen]);
 
-  const dayTxs = useMemo(
-    () => transactions.filter(t => isSameDay(t.timestamp, selectedDate)),
-    [transactions, selectedDate]
-  );
-
   const filteredTxs = useMemo(() => {
-    let list = dayTxs;
+    let list = transactions;
     if (activeFilters.size > 0) {
       list = list.filter(t => {
-        if (activeFilters.has('soybean') && t.items.some(i => SOYBEAN_IDS.includes(i.productId))) return true;
-        if (activeFilters.has('plastic') && t.items.some(i => i.productId === PLASTIC_ID)) return true;
-        if (activeFilters.has('other')   && t.items.some(i => OTHER_IDS.includes(i.productId))) return true;
+        if (activeFilters.has('soybean') && t.items.some(i => i.unit === 'kg')) return true;
+        if (activeFilters.has('plastic') && t.items.some(i => i.plasticSize !== undefined)) return true;
+        if (activeFilters.has('other')   && t.items.some(i => i.unit === 'pcs' && !i.plasticSize)) return true;
         return false;
       });
     }
@@ -497,27 +574,27 @@ export default function TransactionLogScreen() {
       });
     }
     return list;
-  }, [dayTxs, activeFilters, searchQuery]);
+  }, [transactions, activeFilters, searchQuery]);
 
   const summaryStats = useMemo(() => {
-    const allItems = dayTxs.flatMap(t => t.items);
+    const allItems = transactions.flatMap(t => t.items);
     const itemMap: Record<string, { qty: number; label: string; color: string; unit: string; isSoybean: boolean }> = {};
 
     for (const item of allItems) {
       const key = item.plasticSize ? `plastic-${item.plasticSize}` : item.productId;
-      const label = SOYBEAN_IDS.includes(item.productId)
+      const label = item.unit === 'kg'
         ? item.productShortName
         : item.plasticSize ? `Plastik ${item.plasticSize}` : item.productName;
       if (!itemMap[key])
-        itemMap[key] = { qty: 0, label, color: item.color, unit: item.unit, isSoybean: SOYBEAN_IDS.includes(item.productId) };
+        itemMap[key] = { qty: 0, label, color: item.color, unit: item.unit, isSoybean: item.unit === 'kg' };
       itemMap[key].qty += item.quantity;
     }
 
     const top3 = Object.values(itemMap).sort((a, b) => b.qty - a.qty).slice(0, 3);
     return { top3 };
-  }, [dayTxs]);
+  }, [transactions]);
 
-  const rawDayTotal = dayTxs.reduce((s, t) => s + t.total, 0);
+  const rawDayTotal = transactions.reduce((s, t) => s + t.total, 0);
 
   const renderTxList = () => (
     <div style={{
@@ -674,7 +751,12 @@ export default function TransactionLogScreen() {
                     {confirming ? (
                       <>
                         <button
-                          onClick={(e) => { e.stopPropagation(); deleteTransaction(tx.id); setDeleteConfirm(null); setExpandedId(null); }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removeTx({ txId: tx.id as Id<'transactions'> }).catch(console.error);
+                            setDeleteConfirm(null);
+                            setExpandedId(null);
+                          }}
                           onPointerDown={() => setPressedBtn(`conf_${tx.id}`)}
                           onPointerUp={() => setPressedBtn(null)}
                           onPointerLeave={() => setPressedBtn(null)}
@@ -738,6 +820,10 @@ export default function TransactionLogScreen() {
   return (
     <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: '16px var(--app-page-gutter) 8px', gap: 0 }}>
       <style>{`
+        @keyframes cal-modal-in {
+          from { opacity: 0; transform: scale(0.94); }
+          to   { opacity: 1; transform: scale(1); }
+        }
         @keyframes tx-expand-in {
           from { opacity: 0; transform: translateY(-5px); }
           to   { opacity: 1; transform: translateY(0); }
@@ -754,9 +840,23 @@ export default function TransactionLogScreen() {
       {editingTx && (
         <EditModal
           transaction={editingTx}
+          members={members}
           onClose={() => setEditingTx(null)}
           onSave={(items, remarks, memberId, memberName) => {
-            updateTransaction(editingTx.id, items, remarks || undefined, memberId, memberName);
+            const originalIds = new Set(editingTx.items.map(i => i.id));
+            const newIds      = new Set(items.map(i => i.id));
+            const removedItemIds = [...originalIds].filter(id => !newIds.has(id));
+            updateTx({
+              txId: editingTx.id as Id<'transactions'>,
+              updatedItems: items.map(i => ({
+                id: i.id as Id<'transactionItems'>,
+                quantity: i.quantity,
+                totalAmount: i.total,
+              })),
+              removedItemIds: removedItemIds as Id<'transactionItems'>[],
+              remarks: remarks || undefined,
+              memberId: memberId as Id<'members'> | undefined,
+            }).catch(console.error);
             const txId = editingTx.id;
             if (savedIdTimerRef.current) clearTimeout(savedIdTimerRef.current);
             setSavedId(txId);
@@ -817,7 +917,6 @@ export default function TransactionLogScreen() {
         }}>
           {/* Slide 1: Total + Stats */}
           <div style={{ width: 'calc(100% / 3)', padding: '12px 0 10px', boxSizing: 'border-box', display: 'flex', alignItems: 'stretch' }}>
-            {/* Left: total — centered, dominant */}
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0 14px', minWidth: 0, textAlign: 'center' }}>
               <div style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 5 }}>
                 {isSameDay(selectedDate, new Date()) ? 'Hari Ini' : `${MONTHS[selectedDate.getMonth()]} ${selectedDate.getDate()}`}
@@ -826,18 +925,16 @@ export default function TransactionLogScreen() {
                 {formatRupiah(rawDayTotal)}
               </div>
             </div>
-            {/* Divider */}
             <div style={{ width: 1, background: 'rgba(200,202,209,0.6)', flexShrink: 0, margin: '8px 0' }} />
-            {/* Right: extras — label above number, left-aligned */}
             <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', gap: 15, padding: '0 12px', flex: 1 }}>
               <div style={{ textAlign: 'center' }}>
                 <div style={{ fontSize: '8px', fontWeight: 600, color: '#9a9db5', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: 3 }}>Transaksi</div>
-                <div style={{ fontSize: '14px', fontWeight: 700, color: '#2d3142', lineHeight: 1 }}>{dayTxs.length}</div>
+                <div style={{ fontSize: '14px', fontWeight: 700, color: '#2d3142', lineHeight: 1 }}>{transactions.length}</div>
               </div>
               <div style={{ textAlign: 'center' }}>
                 <div style={{ fontSize: '8px', fontWeight: 600, color: '#9a9db5', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: 3 }}>Rata-rata</div>
                 <div style={{ fontSize: '14px', fontWeight: 700, color: '#2d3142', lineHeight: 1 }}>
-                  {dayTxs.length > 0 ? formatRupiah(Math.round(rawDayTotal / dayTxs.length)) : '—'}
+                  {transactions.length > 0 ? formatRupiah(Math.round(rawDayTotal / transactions.length)) : '—'}
                 </div>
               </div>
             </div>
@@ -897,7 +994,7 @@ export default function TransactionLogScreen() {
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5 }}>
                 <button
                   aria-label="Ekspor CSV"
-                  onClick={e => { e.stopPropagation(); exportCSV(dayTxs, selectedDate); }}
+                  onClick={e => { e.stopPropagation(); exportCSV(transactions, selectedDate); }}
                   onPointerDown={() => setPressedBtn('slide3_csv')}
                   onPointerUp={() => setPressedBtn(null)}
                   onPointerLeave={() => setPressedBtn(null)}

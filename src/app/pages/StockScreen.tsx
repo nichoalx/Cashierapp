@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { Plus, X, ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
-import { useAppStore, StockAddition } from '../store';
+import { Plus, X, ChevronLeft, ChevronRight, ChevronDown, Calendar } from 'lucide-react';
+import { useQuery, useMutation } from 'convex/react';
+import { api } from '../../../convex/_generated/api';
+import { Id } from '../../../convex/_generated/dataModel';
 import { PriceTicker } from '../components/PriceTicker';
 import { PriceEditorModal } from '../components/PriceEditorModal';
 
@@ -10,6 +12,33 @@ const SHD_RECESSED    = 'inset 3px 3px 7px #c8cad1, inset -3px -3px 7px #ffffff'
 const SHD_ACTION_RAISED = '4px 4px 10px rgba(0,0,0,0.16), -3px -3px 8px rgba(255,255,255,0.5)';
 const SHD_ACTION_PRESS  = 'inset 3px 3px 8px rgba(0,0,0,0.22), inset -2px -2px 5px rgba(255,255,255,0.15)';
 const SHD_CALENDAR      = '8px 8px 18px #c0c3ca, -6px -6px 14px #ffffff';
+
+interface StockRow {
+  id: Id<'stock'>;
+  productId: Id<'products'>;
+  variantId?: Id<'productVariants'>;
+  productName: string;
+  productShortName: string;
+  quantity: number;
+  unit: string;
+  minThreshold: number;
+  color: string;
+}
+
+interface AdditionResult {
+  additionId: Id<'stockAdditions'>;
+  productName: string;
+  quantity: number;
+  unit: string;
+}
+
+interface AdditionRow {
+  id: Id<'stockAdditions'>;
+  productName: string;
+  quantity: number;
+  unit: string;
+  timestamp: Date;
+}
 
 function isSameDay(a: Date, b: Date) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
@@ -76,13 +105,24 @@ function StockCalendar({
   const nextMonth = () => { if (viewMonth === 11) { setViewMonth(0); setViewYear(y => y + 1); } else setViewMonth(m => m + 1); };
 
   return (
-    <div style={{ position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)', marginTop: 8, zIndex: 100 }}>
-    <div style={{
-      background: '#eef0f5', borderRadius: '18px',
-      boxShadow: SHD_CALENDAR,
-      padding: '14px', width: 280,
-      animation: 'cal-in 160ms cubic-bezier(0.22, 1, 0.36, 1) both',
-    }}>
+    <div
+      style={{
+        position: 'fixed', left: 0, right: 0,
+        top: 'var(--app-visual-offset-top)', height: 'var(--app-visual-height)',
+        zIndex: 200, background: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(4px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 20px',
+      }}
+      onClick={onClose}
+    >
+    <div
+      onClick={e => e.stopPropagation()}
+      style={{
+        background: '#eef0f5', borderRadius: '20px',
+        boxShadow: SHD_CALENDAR,
+        padding: '16px', width: '100%', maxWidth: 300,
+        animation: 'cal-modal-in 180ms cubic-bezier(0.16, 1, 0.3, 1) both',
+      }}
+    >
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
         <button onClick={prevMonth} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 4, color: '#9a9db5' }}><ChevronLeft size={16} /></button>
         <span style={{ fontSize: '13px', fontWeight: 700, color: '#2d3142' }}>{MONTHS[viewMonth]} {viewYear}</span>
@@ -151,17 +191,9 @@ function AdditionDateNav({
   additionDates: Date[];
 }) {
   const [calOpen, setCalOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!calOpen) return;
-    const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setCalOpen(false); };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [calOpen]);
 
   return (
-    <div ref={ref} style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 6 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
       <div style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Riwayat Tambah Stok</div>
       <button
         onClick={() => setCalOpen(o => !o)}
@@ -195,7 +227,7 @@ function AdditionDateNav({
 }
 
 // ─────────── Undo Toast ───────────
-function UndoToast({ entry, startedAt, onUndo }: { entry: StockAddition; startedAt: number; onUndo: () => void }) {
+function UndoToast({ result, startedAt, onUndo }: { result: AdditionResult; startedAt: number; onUndo: () => void }) {
   const DURATION = 2400;
   const [, setTick] = useState(0);
 
@@ -205,7 +237,7 @@ function UndoToast({ entry, startedAt, onUndo }: { entry: StockAddition; started
   }, []);
 
   const progress = Math.max(0, 1 - (Date.now() - startedAt) / DURATION);
-  const qty = entry.quantity % 1 === 0 ? entry.quantity : entry.quantity.toFixed(1);
+  const qty = result.quantity % 1 === 0 ? result.quantity : result.quantity.toFixed(1);
 
   return (
     <div style={{
@@ -219,7 +251,7 @@ function UndoToast({ entry, startedAt, onUndo }: { entry: StockAddition; started
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: '12px', fontWeight: 700, color: '#2d3142' }}>
-            +{qty} {entry.unit} {entry.productName}
+            +{qty} {result.unit} {result.productName}
           </div>
           <div style={{ fontSize: '10px', color: '#9a9db5', marginTop: 1 }}>Stok berhasil ditambahkan</div>
         </div>
@@ -242,23 +274,43 @@ function UndoToast({ entry, startedAt, onUndo }: { entry: StockAddition; started
 }
 
 // ─────────── Add Stock Modal ───────────
-function AddStockModal({ onClose, onAdded }: { onClose: () => void; onAdded: (entry: StockAddition) => void }) {
-  const { stock, addStock } = useAppStore();
-  const [selectedId, setSelectedId] = useState('');
+function AddStockModal({
+  stockItems,
+  onClose,
+  onAdded,
+}: {
+  stockItems: StockRow[];
+  onClose: () => void;
+  onAdded: (result: AdditionResult) => void;
+}) {
+  const addStockMutation = useMutation(api.stock.addStock);
+  const [selectedId, setSelectedId] = useState<Id<'stock'> | ''>('');
   const [amount, setAmount]         = useState('');
   const [addPressed, setAddPressed] = useState(false);
 
-  const selectedItem    = stock.find(s => s.productId === selectedId);
+  const selectedItem    = stockItems.find(s => s.id === selectedId);
   const parsedAmount    = parseFloat(amount);
   const canAdd          = !!(selectedId && amount && parsedAmount > 0);
-  const isLargeQuantity = !!(selectedItem && canAdd && parsedAmount > selectedItem.lowThreshold * 5);
+  const isLargeQuantity = !!(selectedItem && canAdd && parsedAmount > selectedItem.minThreshold * 5);
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
     if (!canAdd || !selectedItem) return;
-    const entry = addStock(selectedId, parsedAmount, selectedItem.productName, selectedItem.unit);
-    setAmount('');
-    setSelectedId('');
-    onAdded(entry);
+    try {
+      const additionId = await addStockMutation({
+        stockId: selectedId as Id<'stock'>,
+        quantity: parsedAmount,
+      });
+      setAmount('');
+      setSelectedId('');
+      onAdded({
+        additionId,
+        productName: selectedItem.productName,
+        quantity: parsedAmount,
+        unit: selectedItem.unit,
+      });
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   return (
@@ -286,13 +338,13 @@ function AddStockModal({ onClose, onAdded }: { onClose: () => void; onAdded: (en
           <div>
             <div style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5', marginBottom: 8, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Pilih Produk</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
-              {stock.map(s => (
-                <button key={s.productId} onClick={() => setSelectedId(s.productId)} style={{
+              {stockItems.map(s => (
+                <button key={s.id} onClick={() => setSelectedId(s.id)} style={{
                   padding: '7px 13px', borderRadius: '10px', border: 'none', cursor: 'pointer',
                   background: '#eef0f5',
-                  boxShadow: selectedId === s.productId ? SHD_RECESSED : SHD_RAISED_STD,
+                  boxShadow: selectedId === s.id ? SHD_RECESSED : SHD_RAISED_STD,
                   fontSize: '12px', fontWeight: 600,
-                  color: selectedId === s.productId ? '#2d3142' : '#9a9db5',
+                  color: selectedId === s.id ? '#2d3142' : '#9a9db5',
                   transition: 'box-shadow 0.12s',
                 }}>
                   {s.productName}
@@ -370,7 +422,9 @@ function AddStockModal({ onClose, onAdded }: { onClose: () => void; onAdded: (en
 }
 
 // ─────────── Stock Card ───────────
-function StockCard({ s, maxQty }: { s: ReturnType<typeof useAppStore>['stock'][0]; maxQty: number }) {
+function StockCard({ s, maxQty }: { s: StockRow; maxQty: number }) {
+  const critical = s.minThreshold;
+  const low      = s.minThreshold * 3;
   return (
     <div style={{
       background: '#eef0f5',
@@ -384,7 +438,7 @@ function StockCard({ s, maxQty }: { s: ReturnType<typeof useAppStore>['stock'][0
           boxShadow: SHD_RECESSED,
           display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
         }}>
-          <span style={{ fontSize: '12px', fontWeight: 700, color: s.color }}>{s.productName.slice(0, 2).toUpperCase()}</span>
+          <span style={{ fontSize: '12px', fontWeight: 700, color: s.color }}>{s.productShortName.slice(0, 2).toUpperCase()}</span>
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
@@ -397,18 +451,95 @@ function StockCard({ s, maxQty }: { s: ReturnType<typeof useAppStore>['stock'][0
             </div>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 2 }}>
-            <StatusIndicator quantity={s.quantity} low={s.lowThreshold} critical={s.criticalThreshold} />
-            <span style={{ fontSize: '9px', color: '#c0c4d0' }}>min {s.criticalThreshold} {s.unit}</span>
+            <StatusIndicator quantity={s.quantity} low={low} critical={critical} />
+            <span style={{ fontSize: '9px', color: '#c0c4d0' }}>min {critical} {s.unit}</span>
           </div>
         </div>
       </div>
-      <StockBar quantity={s.quantity} low={s.lowThreshold} critical={s.criticalThreshold} max={maxQty} />
+      <StockBar quantity={s.quantity} low={low} critical={critical} max={maxQty} />
+    </div>
+  );
+}
+
+// ─────────── Plastic Group Card ───────────
+function PlasticGroupCard({ items }: { items: StockRow[] }) {
+  const [expanded, setExpanded] = useState(false);
+
+  const totalQty   = items.reduce((sum, s) => sum + s.quantity, 0);
+  const color      = items[0]?.color ?? '#38b2ac';
+  const anyCritical = items.some(s => s.quantity <= s.minThreshold);
+  const anyLow      = items.some(s => s.quantity > s.minThreshold && s.quantity <= s.minThreshold * 3);
+  const totalCritical = items.reduce((sum, s) => sum + s.minThreshold, 0);
+  const totalLow      = items.reduce((sum, s) => sum + s.minThreshold * 3, 0);
+  const maxQty     = Math.max(totalQty, totalLow, 1);
+
+  const statusColor = anyCritical ? '#d4183d' : anyLow ? '#d4a017' : '#52b96a';
+  const statusLabel = anyCritical ? 'KRITIS'  : anyLow ? 'RENDAH'  : 'OK';
+
+  return (
+    <div style={{ background: '#eef0f5', boxShadow: SHD_RAISED_LIST, borderRadius: '14px', flexShrink: 0, overflow: 'hidden' }}>
+      <button
+        onClick={() => setExpanded(e => !e)}
+        style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: '12px 14px', textAlign: 'left' }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{
+            width: 38, height: 38, borderRadius: '10px', background: '#eef0f5',
+            boxShadow: SHD_RECESSED,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+          }}>
+            <span style={{ fontSize: '12px', fontWeight: 700, color }}>P</span>
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '13px', fontWeight: 700, color: '#2d3142' }}>Plastik</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div>
+                  <span style={{ fontSize: '20px', fontWeight: 700, color: '#2d3142' }}>{totalQty}</span>
+                  <span style={{ fontSize: '10px', color: '#9a9db5', marginLeft: 3 }}>pcs</span>
+                </div>
+                <ChevronDown size={14} color="#9a9db5" style={{ transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s ease', flexShrink: 0 }} />
+              </div>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 2 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                <div style={{ width: 8, height: 8, borderRadius: '50%', background: statusColor, boxShadow: `0 0 5px ${statusColor}99` }} />
+                <span style={{ fontSize: '9px', color: statusColor, fontWeight: 700, letterSpacing: '0.05em' }}>{statusLabel}</span>
+              </div>
+              <span style={{ fontSize: '9px', color: '#c0c4d0' }}>{items.length} ukuran</span>
+            </div>
+          </div>
+        </div>
+        <StockBar quantity={totalQty} low={totalLow} critical={totalCritical} max={maxQty} />
+      </button>
+
+      {expanded && (
+        <div style={{ borderTop: '1px solid #e0e3ec', padding: '4px 14px 10px' }}>
+          {items.map((s, i) => {
+            const sizeName   = s.productName.replace(/^Plastik\s+/i, '');
+            const dotColor   = s.quantity <= s.minThreshold ? '#d4183d' : s.quantity <= s.minThreshold * 3 ? '#d4a017' : '#52b96a';
+            const isLast     = i === items.length - 1;
+            return (
+              <div key={s.id} style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                padding: '8px 0',
+                borderBottom: isLast ? 'none' : '1px solid #eaecf2',
+              }}>
+                <div style={{ width: 6, height: 6, borderRadius: '50%', background: dotColor, flexShrink: 0 }} />
+                <span style={{ flex: 1, fontSize: '12px', fontWeight: 600, color: '#2d3142' }}>{sizeName}</span>
+                <span style={{ fontSize: '14px', fontWeight: 700, color: '#2d3142' }}>{s.quantity}</span>
+                <span style={{ fontSize: '10px', color: '#9a9db5', minWidth: 20 }}>pcs</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
 
 // ─────────── Addition Entry ───────────
-function AdditionEntry({ entry, index }: { entry: StockAddition; index: number }) {
+function AdditionEntry({ entry, index }: { entry: AdditionRow; index: number }) {
   const time = new Intl.DateTimeFormat('id-ID', { hour: '2-digit', minute: '2-digit' }).format(entry.timestamp);
   return (
     <div style={{
@@ -426,50 +557,78 @@ function AdditionEntry({ entry, index }: { entry: StockAddition; index: number }
 
 // ─────────── Main Screen ───────────
 export default function StockScreen() {
-  const { stock, stockAdditions, undoStockAddition } = useAppStore();
+  const rawStock     = useQuery(api.stock.list);
+  const rawAdditions = useQuery(api.stock.listAdditions);
+  const undoAdditionMutation = useMutation(api.stock.undoAddition);
+
   const [showPriceEditor, setShowPriceEditor] = useState(false);
   const [showAddStock, setShowAddStock]       = useState(false);
   const [historyDate, setHistoryDate]         = useState<Date | null>(null);
-  const [undoState, setUndoState]             = useState<{ entry: StockAddition; startedAt: number } | null>(null);
+  const [undoState, setUndoState]             = useState<{ result: AdditionResult; startedAt: number } | null>(null);
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const handleStockAdded = (entry: StockAddition) => {
+  const stockItems: StockRow[] = useMemo(() => {
+    if (!rawStock) return [];
+    return rawStock.map(s => ({
+      id: s.id as Id<'stock'>,
+      productId: s.productId as Id<'products'>,
+      variantId: s.variantId as Id<'productVariants'> | undefined,
+      productName: s.productName,
+      productShortName: s.productShortName,
+      quantity: s.quantity,
+      unit: s.unit,
+      minThreshold: s.minThreshold,
+      color: s.color,
+    }));
+  }, [rawStock]);
+
+  const additions: AdditionRow[] = useMemo(() => {
+    if (!rawAdditions) return [];
+    return rawAdditions.map(a => ({
+      id: a.id as Id<'stockAdditions'>,
+      productName: a.productName,
+      quantity: a.quantity,
+      unit: a.unit,
+      timestamp: new Date(a.timestamp),
+    }));
+  }, [rawAdditions]);
+
+  const handleStockAdded = (result: AdditionResult) => {
     if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
-    setUndoState({ entry, startedAt: Date.now() });
+    setUndoState({ result, startedAt: Date.now() });
     undoTimerRef.current = setTimeout(() => setUndoState(null), 10000);
   };
 
   const handleUndo = () => {
     if (!undoState) return;
     if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
-    undoStockAddition(undoState.entry);
+    undoAdditionMutation({ additionId: undoState.result.additionId }).catch(console.error);
     setUndoState(null);
   };
 
   useEffect(() => () => { if (undoTimerRef.current) clearTimeout(undoTimerRef.current); }, []);
 
-  const soybeanStock = stock.filter(s => s.type === 'soybean');
-  const otherStock   = stock.filter(s => s.type === 'other');
-  const maxQty       = (s: typeof stock[0]) => Math.max(s.quantity, s.lowThreshold * 2, 1);
+  const soybeanStock  = stockItems.filter(s => s.unit === 'kg');
+  const plasticItems  = stockItems.filter(s => s.unit !== 'kg' && !!s.variantId);
+  const pureOther     = stockItems.filter(s => s.unit !== 'kg' && !s.variantId);
+  const maxQty       = (s: StockRow) => Math.max(s.quantity, s.minThreshold * 6, 1);
 
-  const criticalCount = stock.filter(s => s.quantity <= s.criticalThreshold).length;
-  const lowCount      = stock.filter(s => s.quantity > s.criticalThreshold && s.quantity <= s.lowThreshold).length;
+  const criticalCount = stockItems.filter(s => s.quantity <= s.minThreshold).length;
+  const lowCount      = stockItems.filter(s => s.quantity > s.minThreshold && s.quantity <= s.minThreshold * 3).length;
 
-  const additionDates = useMemo(() => stockAdditions.map(a => a.timestamp), [stockAdditions]);
+  const additionDates = useMemo(() => additions.map(a => a.timestamp), [additions]);
 
   const filteredAdditions = useMemo(() => {
-    if (!historyDate) return stockAdditions.slice().sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime()).slice(0, 20);
-    return stockAdditions
-      .filter(a => isSameDay(a.timestamp, historyDate))
-      .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
-  }, [stockAdditions, historyDate]);
+    if (!historyDate) return additions.slice(0, 20);
+    return additions.filter(a => isSameDay(a.timestamp, historyDate));
+  }, [additions, historyDate]);
 
   const groupedAdditions = useMemo(() => {
     if (historyDate) return null;
     const today = new Date();
     const yesterday = new Date(today);
     yesterday.setDate(today.getDate() - 1);
-    const groups: { label: string; entries: StockAddition[] }[] = [];
+    const groups: { label: string; entries: AdditionRow[] }[] = [];
     filteredAdditions.forEach(entry => {
       let label: string;
       if (isSameDay(entry.timestamp, today)) label = 'Hari Ini';
@@ -490,11 +649,12 @@ export default function StockScreen() {
       {showPriceEditor && <PriceEditorModal onClose={() => setShowPriceEditor(false)} />}
       {showAddStock && (
         <AddStockModal
+          stockItems={stockItems}
           onClose={() => setShowAddStock(false)}
-          onAdded={entry => { setShowAddStock(false); handleStockAdded(entry); }}
+          onAdded={result => { setShowAddStock(false); handleStockAdded(result); }}
         />
       )}
-      {undoState && <UndoToast entry={undoState.entry} startedAt={undoState.startedAt} onUndo={handleUndo} />}
+      {undoState && <UndoToast result={undoState.result} startedAt={undoState.startedAt} onUndo={handleUndo} />}
 
       <PriceTicker onOpenPriceEditor={() => setShowPriceEditor(true)} />
 
@@ -550,10 +710,11 @@ export default function StockScreen() {
         padding: '4px 8px var(--app-content-bottom)',
       }}>
         <div style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5', letterSpacing: '0.08em', textTransform: 'uppercase', paddingLeft: 2, flexShrink: 0 }}>Kedelai</div>
-        {soybeanStock.map(s => <StockCard key={s.productId} s={s} maxQty={maxQty(s)} />)}
+        {soybeanStock.map(s => <StockCard key={s.id} s={s} maxQty={maxQty(s)} />)}
 
         <div style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5', letterSpacing: '0.08em', textTransform: 'uppercase', paddingLeft: 2, marginTop: 4, flexShrink: 0 }}>Lainnya</div>
-        {otherStock.map(s => <StockCard key={s.productId} s={s} maxQty={maxQty(s)} />)}
+        {pureOther.map(s => <StockCard key={s.id} s={s} maxQty={maxQty(s)} />)}
+        {plasticItems.length > 0 && <PlasticGroupCard items={plasticItems} />}
 
         {/* History section */}
         <div style={{
@@ -595,7 +756,7 @@ export default function StockScreen() {
                       ))
                   }
                 </div>
-                {!historyDate && stockAdditions.length > 20 && (
+                {!historyDate && additions.length > 20 && (
                   <div style={{ textAlign: 'center', padding: '10px 0 2px', fontSize: '10px', color: '#c0c4d0' }}>
                     Menampilkan 20 entri terbaru · Filter tanggal untuk melihat riwayat
                   </div>
@@ -615,9 +776,9 @@ export default function StockScreen() {
           from { opacity: 0; transform: translateY(-4px); }
           to   { opacity: 1; transform: translateY(0); }
         }
-        @keyframes cal-in {
-          from { opacity: 0; transform: translateY(-4px) scale(0.98); }
-          to   { opacity: 1; transform: translateY(0) scale(1); }
+        @keyframes cal-modal-in {
+          from { opacity: 0; transform: scale(0.94); }
+          to   { opacity: 1; transform: scale(1); }
         }
         @keyframes entry-in {
           from { opacity: 0; transform: translateX(-4px); }

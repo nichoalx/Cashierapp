@@ -91,6 +91,15 @@ export default defineSchema({
     .index("by_productId", ["productId"])
     .index("by_variantId", ["variantId"]),
 
+  // ─── Stock Additions History ─────────────────────────────────────────────────
+
+  stockAdditions: defineTable({
+    productId: v.id("products"),
+    variantId: v.optional(v.id("productVariants")),
+    quantity: v.number(),
+    timestamp: v.number(),
+  }).index("by_timestamp", ["timestamp"]),
+
   // ─── Settings ────────────────────────────────────────────────────────────────
 
   // Singleton — always exactly one row. Patch it, never insert a second.
