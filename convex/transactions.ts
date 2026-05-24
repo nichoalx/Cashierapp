@@ -13,6 +13,7 @@ export const create = mutation({
     })),
     remarks: v.optional(v.string()),
     memberId: v.optional(v.id("members")),
+    discount: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
@@ -27,13 +28,16 @@ export const create = mutation({
       .collect();
     const orderNumber = todayTxs.length + 1;
 
-    const totalAmount = args.items.reduce((s, i) => s + i.totalAmount, 0);
+    const subtotal = args.items.reduce((s, i) => s + i.totalAmount, 0);
+    const discount = Math.max(0, Math.min(args.discount ?? 0, subtotal));
+    const totalAmount = subtotal - discount;
 
     const txId = await ctx.db.insert("transactions", {
       orderNumber,
       date,
       timestamp: now,
       totalAmount,
+      discount: discount > 0 ? discount : undefined,
       remarks: args.remarks,
       memberId: args.memberId,
     });
@@ -119,6 +123,7 @@ export const listByDate = query({
         orderNumber: tx.orderNumber,
         timestamp: tx.timestamp,
         total: tx.totalAmount,
+        discount: tx.discount ?? 0,
         remarks: tx.remarks,
         memberId: tx.memberId,
         memberName,
@@ -139,6 +144,7 @@ export const update = mutation({
     removedItemIds: v.array(v.id("transactionItems")),
     remarks: v.optional(v.string()),
     memberId: v.optional(v.id("members")),
+    discount: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
@@ -155,10 +161,15 @@ export const update = mutation({
       .query("transactionItems")
       .withIndex("by_transactionId", q => q.eq("transactionId", args.txId))
       .collect();
-    const newTotal = remaining.reduce((s, i) => s + i.totalAmount, 0);
+    const subtotal = remaining.reduce((s, i) => s + i.totalAmount, 0);
+
+    const existing = await ctx.db.get(args.txId);
+    const requestedDiscount = args.discount ?? existing?.discount ?? 0;
+    const discount = Math.max(0, Math.min(requestedDiscount, subtotal));
 
     await ctx.db.patch(args.txId, {
-      totalAmount: newTotal,
+      totalAmount: subtotal - discount,
+      discount: discount > 0 ? discount : undefined,
       remarks: args.remarks,
       memberId: args.memberId,
     });

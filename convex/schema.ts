@@ -60,7 +60,8 @@ export default defineSchema({
     orderNumber: v.number(), // Daily sequence: 1, 2, 3… resets each day
     date: v.string(),        // "YYYY-MM-DD" — drives daily grouping and orderNumber reset
     timestamp: v.number(),   // Unix ms — precise time for sorting within a day
-    totalAmount: v.number(), // Denormalized SUM(items.totalAmount) — kept for fast daily totals
+    totalAmount: v.number(), // Final amount paid = SUM(items.totalAmount) - (discount ?? 0). Denormalized for fast daily totals.
+    discount: v.optional(v.number()), // Rupiah amount subtracted from subtotal. Absent on legacy rows.
     remarks: v.optional(v.string()),
     memberId: v.optional(v.id("members")),
   })
@@ -99,6 +100,21 @@ export default defineSchema({
     quantity: v.number(),
     timestamp: v.number(),
   }).index("by_timestamp", ["timestamp"]),
+
+  // ─── Stock Snapshots (for daily history in Sheets sync) ──────────────────────
+  // Written by the Sheets sync action — one row per (date, product/variant).
+  // Captures the stock level at sync time so the sheet has real historical data
+  // instead of reconstructing from current + transactions.
+
+  stockSnapshots: defineTable({
+    date: v.string(),         // "YYYY-MM-DD"
+    productId: v.id("products"),
+    variantId: v.optional(v.id("productVariants")),
+    quantity: v.number(),
+    timestamp: v.number(),    // Unix ms when snapshot was taken
+  })
+    .index("by_date", ["date"])
+    .index("by_productId_date", ["productId", "date"]),
 
   // ─── Settings ────────────────────────────────────────────────────────────────
 

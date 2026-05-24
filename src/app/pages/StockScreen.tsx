@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { Plus, X, ChevronLeft, ChevronRight, ChevronDown, Calendar } from 'lucide-react';
-import { useQuery, useMutation } from 'convex/react';
+import { Plus, X, ChevronLeft, ChevronRight, ChevronDown, Calendar, FileSpreadsheet, Check } from 'lucide-react';
+import { useQuery, useMutation, useAction } from 'convex/react';
 import { api } from '../../../convex/_generated/api';
 import { Id } from '../../../convex/_generated/dataModel';
 import { PriceTicker } from '../components/PriceTicker';
@@ -560,26 +560,52 @@ export default function StockScreen() {
   const rawStock     = useQuery(api.stock.list);
   const rawAdditions = useQuery(api.stock.listAdditions);
   const undoAdditionMutation = useMutation(api.stock.undoAddition);
+  const syncAll              = useAction(api.sheetsSync.syncAll);
 
   const [showPriceEditor, setShowPriceEditor] = useState(false);
   const [showAddStock, setShowAddStock]       = useState(false);
   const [historyDate, setHistoryDate]         = useState<Date | null>(null);
   const [undoState, setUndoState]             = useState<{ result: AdditionResult; startedAt: number } | null>(null);
+  const [syncState, setSyncState]             = useState<'idle' | 'syncing' | 'done' | 'error'>('idle');
+  const [syncError, setSyncError]             = useState<string | null>(null);
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const syncResetRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleSync = async () => {
+    if (syncState === 'syncing') return;
+    setSyncState('syncing');
+    setSyncError(null);
+    try {
+      await syncAll({});
+      setSyncState('done');
+      if (syncResetRef.current) clearTimeout(syncResetRef.current);
+      syncResetRef.current = setTimeout(() => setSyncState('idle'), 2200);
+    } catch (e) {
+      console.error(e);
+      setSyncState('error');
+      setSyncError(e instanceof Error ? e.message : String(e));
+      if (syncResetRef.current) clearTimeout(syncResetRef.current);
+      syncResetRef.current = setTimeout(() => setSyncState('idle'), 4500);
+    }
+  };
+
+  useEffect(() => () => { if (syncResetRef.current) clearTimeout(syncResetRef.current); }, []);
 
   const stockItems: StockRow[] = useMemo(() => {
     if (!rawStock) return [];
-    return rawStock.map(s => ({
-      id: s.id as Id<'stock'>,
-      productId: s.productId as Id<'products'>,
-      variantId: s.variantId as Id<'productVariants'> | undefined,
-      productName: s.productName,
-      productShortName: s.productShortName,
-      quantity: s.quantity,
-      unit: s.unit,
-      minThreshold: s.minThreshold,
-      color: s.color,
-    }));
+    return rawStock
+      .filter(s => s.productShortName !== 'E')
+      .map(s => ({
+        id: s.id as Id<'stock'>,
+        productId: s.productId as Id<'products'>,
+        variantId: s.variantId as Id<'productVariants'> | undefined,
+        productName: s.productName,
+        productShortName: s.productShortName,
+        quantity: s.quantity,
+        unit: s.unit,
+        minThreshold: s.minThreshold,
+        color: s.color,
+      }));
   }, [rawStock]);
 
   const additions: AdditionRow[] = useMemo(() => {
@@ -686,14 +712,43 @@ export default function StockScreen() {
             </div>
           )}
         </div>
-        <button onClick={() => setShowAddStock(true)} style={{
-          height: 38, padding: '0 14px', borderRadius: '11px', border: 'none', cursor: 'pointer',
-          background: '#eef0f5', boxShadow: SHD_RAISED_STD,
-          display: 'flex', alignItems: 'center', gap: 5, color: '#4a90d9', fontSize: '12px', fontWeight: 600,
-          transition: 'box-shadow 0.12s',
-        }}>
-          <Plus size={14} /> Tambah Stok
-        </button>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button
+            onClick={handleSync}
+            disabled={syncState === 'syncing'}
+            aria-label="Sinkronkan ke Google Sheets"
+            title={syncError ?? (syncState === 'done' ? 'Tersinkron' : 'Sinkron ke Google Sheets')}
+            style={{
+              height: 38, width: 44, borderRadius: '11px', border: 'none',
+              cursor: syncState === 'syncing' ? 'default' : 'pointer',
+              background: '#eef0f5',
+              boxShadow: syncState === 'syncing' ? SHD_RECESSED : SHD_RAISED_STD,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: syncState === 'error' ? '#d4183d' : syncState === 'done' ? '#52b96a' : '#34a853',
+              transition: 'box-shadow 0.12s, color 0.2s',
+            }}
+          >
+            {syncState === 'syncing' ? (
+              <div style={{
+                width: 14, height: 14, borderRadius: '50%',
+                border: '2px solid #c0c4d0', borderTopColor: '#34a853',
+                animation: 'sync-spin 0.7s linear infinite',
+              }} />
+            ) : syncState === 'done' ? (
+              <Check size={15} />
+            ) : (
+              <FileSpreadsheet size={15} />
+            )}
+          </button>
+          <button onClick={() => setShowAddStock(true)} style={{
+            height: 38, padding: '0 14px', borderRadius: '11px', border: 'none', cursor: 'pointer',
+            background: '#eef0f5', boxShadow: SHD_RAISED_STD,
+            display: 'flex', alignItems: 'center', gap: 5, color: '#4a90d9', fontSize: '12px', fontWeight: 600,
+            transition: 'box-shadow 0.12s',
+          }}>
+            <Plus size={14} /> Tambah Stok
+          </button>
+        </div>
       </div>
 
       {/* Scrollable content */}
@@ -787,6 +842,9 @@ export default function StockScreen() {
         @keyframes toast-in {
           from { opacity: 0; transform: translateY(8px); }
           to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes sync-spin {
+          to { transform: rotate(360deg); }
         }
         @media (prefers-reduced-motion: reduce) {
           *, *::before, *::after {

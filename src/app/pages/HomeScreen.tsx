@@ -139,10 +139,14 @@ export default function HomeScreen() {
   const [showMemberPicker, setShowMemberPicker] = useState(false);
   const [pressedIcon, setPressedIcon] = useState<string | null>(null);
   const [pressedRemove, setPressedRemove] = useState<string | null>(null);
+  const [discountMode, setDiscountMode] = useState(false);
+  const [discountInput, setDiscountInput] = useState('0');
   const pendingTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const phaseTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [pendingComplete, setPendingComplete] = useState<null | { items: TransactionItem[]; remarks: string; memberId?: string; memberName?: string }>(null);
+  const [pendingComplete, setPendingComplete] = useState<null | { items: TransactionItem[]; remarks: string; memberId?: string; memberName?: string; discount: number }>(null);
   const [undoVisible, setUndoVisible] = useState(false);
+
+  const appliedDiscount = parseFloat(discountInput) || 0;
 
   const selectedProduct = step.type === 'quantity' ? step : null;
 
@@ -224,7 +228,8 @@ export default function HomeScreen() {
 
   const handleComplete = useCallback(() => {
     if (items.length === 0) return;
-    const stash = { items: [...items], remarks: remarks.trim(), memberId: selectedMember?.id, memberName: selectedMember?.name };
+    const discountAmount = parseFloat(discountInput) || 0;
+    const stash = { items: [...items], remarks: remarks.trim(), memberId: selectedMember?.id, memberName: selectedMember?.name, discount: discountAmount };
     setPendingComplete(stash);
     setUndoVisible(false);
     setItems([]);
@@ -232,6 +237,8 @@ export default function HomeScreen() {
     setInputValue('0');
     setRemarks('');
     setSelectedMember(null);
+    setDiscountMode(false);
+    setDiscountInput('0');
     setCompletedFlash(true);
     if (pendingTimerRef.current) clearTimeout(pendingTimerRef.current);
     if (phaseTimerRef.current) clearTimeout(phaseTimerRef.current);
@@ -247,12 +254,13 @@ export default function HomeScreen() {
         })),
         remarks: stash.remarks || undefined,
         memberId: stash.memberId as Id<'members'> | undefined,
+        discount: stash.discount > 0 ? stash.discount : undefined,
       }).catch(console.error);
       setPendingComplete(null);
       setCompletedFlash(false);
       setUndoVisible(false);
     }, 1500);
-  }, [items, remarks, selectedMember, createTx]);
+  }, [items, remarks, selectedMember, createTx, discountInput]);
 
   const handleUndo = useCallback(() => {
     if (pendingTimerRef.current) clearTimeout(pendingTimerRef.current);
@@ -261,6 +269,9 @@ export default function HomeScreen() {
       setItems(pendingComplete.items);
       setRemarks(pendingComplete.remarks);
       setSelectedMember(pendingComplete.memberId ? (members.find(m => m.id === pendingComplete.memberId) ?? null) : null);
+      if (pendingComplete.discount > 0) {
+        setDiscountInput(String(pendingComplete.discount));
+      }
     }
     setPendingComplete(null);
     setCompletedFlash(false);
@@ -268,7 +279,12 @@ export default function HomeScreen() {
   }, [pendingComplete, members]);
 
   const removeItem = useCallback((id: string) => setItems(items.filter(x => x.id !== id)), [items]);
-  const transactionTotal = items.reduce((s, i) => s + i.total, 0);
+  const subtotal = items.reduce((s, i) => s + i.total, 0);
+  const transactionTotal = Math.max(0, subtotal - appliedDiscount);
+
+  const handleDiscountToggle = useCallback(() => {
+    setDiscountMode(m => !m);
+  }, []);
 
   const neuBtn = (color: string, active: boolean): React.CSSProperties => ({
     background: active ? color : '#eef0f5',
@@ -424,9 +440,17 @@ export default function HomeScreen() {
               </div>
             )}
             {/* Cart total */}
-            <div style={{ marginTop: 'auto', paddingTop: 7, borderTop: '1px solid rgba(0,0,0,0.07)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
-              <span style={{ fontSize: '9px', color: '#9a9db5', letterSpacing: '0.08em', fontWeight: 600 }}>TOTAL</span>
-              <span style={{ fontSize: '14px', fontWeight: 700, color: '#2d3142' }}>{formatRupiah(transactionTotal)}</span>
+            <div style={{ marginTop: 'auto', paddingTop: 7, borderTop: '1px solid rgba(0,0,0,0.07)', flexShrink: 0 }}>
+              {appliedDiscount > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
+                  <span style={{ fontSize: '9px', color: '#d4183d', letterSpacing: '0.08em', fontWeight: 600 }}>DISKON</span>
+                  <span style={{ fontSize: '11px', fontWeight: 700, color: '#d4183d' }}>−{formatRupiah(appliedDiscount)}</span>
+                </div>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '9px', color: '#9a9db5', letterSpacing: '0.08em', fontWeight: 600 }}>TOTAL</span>
+                <span style={{ fontSize: '14px', fontWeight: 700, color: '#2d3142' }}>{formatRupiah(transactionTotal)}</span>
+              </div>
             </div>
           </>
         )}
@@ -447,9 +471,14 @@ export default function HomeScreen() {
           position: 'relative', overflow: 'hidden',
         }}>
           <div style={{ position: 'absolute', inset: 0, borderRadius: '16px', background: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.04) 2px, rgba(0,0,0,0.04) 4px)', pointerEvents: 'none' }} />
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 3, position: 'relative' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 3, position: 'relative', gap: 8 }}>
             <div>
-              {selectedProduct ? (
+              {discountMode ? (
+                <>
+                  <div style={{ fontSize: '9px', color: '#ff6f8a', letterSpacing: '0.1em', marginBottom: 1 }}>DISKON</div>
+                  <div style={{ fontSize: '12px', fontWeight: 700, color: '#ff6f8a' }}>Rp</div>
+                </>
+              ) : selectedProduct ? (
                 <>
                   <div style={{ fontSize: '9px', color: '#3a4060', letterSpacing: '0.1em', marginBottom: 1 }}>UNIT</div>
                   <div style={{ fontSize: '12px', fontWeight: 700, color: selectedProduct.isEceran ? '#9b6dff' : selectedProduct.color }}>
@@ -462,27 +491,52 @@ export default function HomeScreen() {
                 </div>
               )}
             </div>
-            {selectedProduct && (
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: '9px', color: '#3a4060', letterSpacing: '0.1em', marginBottom: 1 }}>TOTAL</div>
-                <div style={{ fontSize: '13px', fontWeight: 700, color: computedTotal > 0 ? '#7ee8a2' : '#3a4060' }}>
-                  {computedTotal > 0 ? formatRupiah(computedTotal) : '—'}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {selectedProduct && !discountMode && (
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: '9px', color: '#3a4060', letterSpacing: '0.1em', marginBottom: 1 }}>TOTAL</div>
+                  <div style={{ fontSize: '13px', fontWeight: 700, color: computedTotal > 0 ? '#7ee8a2' : '#3a4060' }}>
+                    {computedTotal > 0 ? formatRupiah(computedTotal) : '—'}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+              <button
+                onClick={handleDiscountToggle}
+                aria-label={discountMode ? 'Tutup diskon' : 'Diskon'}
+                style={{
+                  position: 'relative', zIndex: 2,
+                  width: 28, height: 28, borderRadius: '50%',
+                  border: 'none', cursor: 'pointer', flexShrink: 0,
+                  background: discountMode ? '#ff6f8a' : '#252947',
+                  color: discountMode ? '#fff' : (appliedDiscount > 0 ? '#ff6f8a' : '#5a6088'),
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  boxShadow: discountMode
+                    ? '0 0 0 2px rgba(255, 111, 138, 0.22), 0 2px 8px rgba(255, 111, 138, 0.45)'
+                    : 'inset 2px 2px 4px #0d0f1a, inset -1px -1px 3px #2a2f48',
+                  transition: 'background 0.18s, box-shadow 0.18s, color 0.18s',
+                  fontWeight: 700, fontSize: '12px', fontFamily: 'inherit', lineHeight: 1,
+                }}
+              >
+                %
+              </button>
+            </div>
           </div>
           {/* Number display */}
           <div style={{
             fontFamily: 'var(--font-mono)',
-            fontSize: '34px', fontWeight: 700, color: '#dde2f0',
+            fontSize: '34px', fontWeight: 700, color: discountMode ? '#ffd1da' : '#dde2f0',
             textAlign: 'right', letterSpacing: '0.06em', lineHeight: 1,
             display: 'flex', alignItems: 'baseline', justifyContent: 'flex-end', gap: 1,
           }}>
-            <span>{inputValue === '0' ? '' : inputValue}</span>
+            <span>
+              {discountMode
+                ? (discountInput === '0' ? '' : discountInput)
+                : (inputValue === '0' ? '' : inputValue)}
+            </span>
             <span style={{
               display: 'inline-block',
-              color: selectedProduct ? '#7ee8a2' : '#2a3050',
-              animation: step.type === 'idle' ? 'none' : 'cursor-blink 1s step-end infinite',
+              color: discountMode ? '#ff6f8a' : (selectedProduct ? '#7ee8a2' : '#2a3050'),
+              animation: discountMode ? 'cursor-blink 1s step-end infinite' : (step.type === 'idle' ? 'none' : 'cursor-blink 1s step-end infinite'),
               fontSize: '30px', lineHeight: 1, marginBottom: '2px',
             }}>|</span>
           </div>
@@ -561,14 +615,14 @@ export default function HomeScreen() {
 
         {/* Numpad */}
         <Numpad
-          value={inputValue}
-          onChange={handleInputChange}
+          value={discountMode ? discountInput : inputValue}
+          onChange={discountMode ? setDiscountInput : handleInputChange}
           onAddItem={handleAddItem}
           onComplete={handleComplete}
-          canAdd={step.type === 'quantity' && parseFloat(inputValue) > 0}
+          canAdd={!discountMode && step.type === 'quantity' && parseFloat(inputValue) > 0}
           canComplete={items.length > 0}
-          allowDecimal={step.type !== 'quantity' || step.unit !== 'pcs'}
-          maxValue={step.type === 'quantity' && step.isEceran ? 10 : undefined}
+          allowDecimal={discountMode ? false : (step.type !== 'quantity' || step.unit !== 'pcs')}
+          maxValue={discountMode ? undefined : (step.type === 'quantity' && step.isEceran ? 10 : undefined)}
         />
       </div>
 

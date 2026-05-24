@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { Pencil, Trash2, X, Check, ChevronDown, ChevronLeft, ChevronRight, Search, SlidersHorizontal, MessageSquare, User, Receipt, FileSpreadsheet, FileDown } from 'lucide-react';
-import { useQuery, useMutation } from 'convex/react';
+import { useQuery, useMutation, useAction } from 'convex/react';
 import { api } from '../../../convex/_generated/api';
 import { Id } from '../../../convex/_generated/dataModel';
 import { formatRupiah, TransactionItem, Member } from '../store';
@@ -56,6 +56,7 @@ interface Tx {
   orderNumber: number;
   timestamp: Date;
   total: number;
+  discount: number;
   remarks?: string;
   memberId?: string;
   memberName?: string;
@@ -238,12 +239,13 @@ interface EditModalProps {
   transaction: Tx;
   members: Member[];
   onClose: () => void;
-  onSave: (items: TransactionItem[], remarks: string, memberId?: string, memberName?: string) => void;
+  onSave: (items: TransactionItem[], remarks: string, discount: number, memberId?: string, memberName?: string) => void;
 }
 
 function EditModal({ transaction, members, onClose, onSave }: EditModalProps) {
   const [items, setItems]           = useState<TransactionItem[]>(transaction.items.map(i => ({ ...i })));
   const [editRemarks, setEditRemarks] = useState(transaction.remarks ?? '');
+  const [editDiscount, setEditDiscount] = useState(transaction.discount > 0 ? String(transaction.discount) : '');
   const [editMember, setEditMember]   = useState<Member | null>(
     members.find(m => m.id === transaction.memberId) ?? null
   );
@@ -267,7 +269,9 @@ function EditModal({ transaction, members, onClose, onSave }: EditModalProps) {
     setItems(prev => prev.map(i => i.id === id ? { ...i, quantity: qty, total: qty * i.unitPrice } : i));
   };
   const removeItem = (id: string) => setItems(prev => prev.filter(i => i.id !== id));
-  const newTotal   = items.reduce((s, i) => s + i.total, 0);
+  const newSubtotal = items.reduce((s, i) => s + i.total, 0);
+  const parsedDiscount = Math.max(0, Math.min(parseFloat(editDiscount) || 0, newSubtotal));
+  const newTotal   = newSubtotal - parsedDiscount;
 
   const sheetTransform = !entered
     ? 'translateY(100%)'
@@ -392,16 +396,67 @@ function EditModal({ transaction, members, onClose, onSave }: EditModalProps) {
                 </span>
                 <ChevronRight size={13} color="#c0c4d0" style={{ flexShrink: 0 }} />
               </button>
+              <div style={{ position: 'relative' }}>
+                <span aria-hidden style={{
+                  position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)',
+                  fontSize: '12px', fontWeight: 700,
+                  color: parsedDiscount > 0 ? '#d4183d' : '#9a9db5',
+                  pointerEvents: 'none',
+                }}>%</span>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  placeholder="Diskon (Rp)"
+                  value={editDiscount}
+                  onChange={e => setEditDiscount(e.target.value)}
+                  style={{
+                    width: '100%', boxSizing: 'border-box',
+                    background: '#eef0f5',
+                    boxShadow: 'inset 2px 2px 5px #c0c3ca, inset -2px -2px 5px #f8f9fc',
+                    borderRadius: '10px', border: 'none', outline: 'none',
+                    padding: '9px 10px 9px 32px',
+                    fontSize: '13px', color: parsedDiscount > 0 ? '#d4183d' : '#2d3142',
+                    fontWeight: parsedDiscount > 0 ? 600 : 400,
+                  }}
+                />
+                {editDiscount && (
+                  <button
+                    aria-label="Hapus diskon"
+                    onClick={() => setEditDiscount('')}
+                    style={{
+                      position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)',
+                      background: 'transparent', border: 'none', cursor: 'pointer', padding: 8,
+                    }}
+                  >
+                    <X size={12} color="#9a9db5" />
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
           <div style={{ padding: '16px 20px 20px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 14 }}>
-              <span style={{ fontSize: '13px', color: '#9a9db5' }}>Total Baru</span>
-              <span style={{ fontSize: '16px', fontWeight: 700, color: '#2d3142' }}>{formatRupiah(newTotal)}</span>
+            <div style={{ marginBottom: 14, display: 'flex', flexDirection: 'column', gap: 3 }}>
+              {parsedDiscount > 0 && (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: '11px', color: '#9a9db5' }}>Subtotal</span>
+                    <span style={{ fontSize: '12px', color: '#9a9db5' }}>{formatRupiah(newSubtotal)}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: '11px', color: '#d4183d', fontWeight: 600 }}>Diskon</span>
+                    <span style={{ fontSize: '12px', color: '#d4183d', fontWeight: 600 }}>−{formatRupiah(parsedDiscount)}</span>
+                  </div>
+                </>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: parsedDiscount > 0 ? 4 : 0, paddingTop: parsedDiscount > 0 ? 4 : 0, borderTop: parsedDiscount > 0 ? '1px solid rgba(0,0,0,0.06)' : 'none' }}>
+                <span style={{ fontSize: '13px', color: '#9a9db5' }}>Total Baru</span>
+                <span style={{ fontSize: '16px', fontWeight: 700, color: '#2d3142' }}>{formatRupiah(newTotal)}</span>
+              </div>
             </div>
             <button
-              onClick={() => { onSave(items, editRemarks, editMember?.id, editMember?.name); onClose(); }}
+              onClick={() => { onSave(items, editRemarks, parsedDiscount, editMember?.id, editMember?.name); onClose(); }}
               onPointerDown={() => setSavePressed(true)}
               onPointerUp={() => setSavePressed(false)}
               onPointerLeave={() => setSavePressed(false)}
@@ -437,7 +492,7 @@ function EditModal({ transaction, members, onClose, onSave }: EditModalProps) {
 function exportCSV(txs: Tx[], date: Date) {
   const pad = (n: number) => String(n).padStart(2, '0');
   const dateStr = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-  const header = 'Date,Order,Time,Product,Qty,Unit,Unit Price,Item Total,Tx Total,Member,Remarks';
+  const header = 'Date,Order,Time,Product,Qty,Unit,Unit Price,Item Total,Discount,Tx Total,Member,Remarks';
   const rows = txs.flatMap(tx =>
     tx.items.map(item => [
       dateStr,
@@ -448,6 +503,7 @@ function exportCSV(txs: Tx[], date: Date) {
       item.unit,
       item.unitPrice,
       item.total,
+      tx.discount,
       tx.total,
       tx.memberName ? `"${tx.memberName}"` : '',
       tx.remarks   ? `"${tx.remarks.replace(/"/g, '""')}"` : '',
@@ -487,6 +543,31 @@ export default function TransactionLogScreen() {
   const rawTxs     = useQuery(api.transactions.listByDate, { date: toDateStr(selectedDate) });
   const updateTx   = useMutation(api.transactions.update);
   const removeTx   = useMutation(api.transactions.remove);
+  const syncAll    = useAction(api.sheetsSync.syncAll);
+
+  const [sheetsSyncState, setSheetsSyncState] = useState<'idle' | 'syncing' | 'done' | 'error'>('idle');
+  const [sheetsSyncError, setSheetsSyncError] = useState<string | null>(null);
+  const sheetsResetRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleSheetsSync = async () => {
+    if (sheetsSyncState === 'syncing') return;
+    setSheetsSyncState('syncing');
+    setSheetsSyncError(null);
+    try {
+      await syncAll({});
+      setSheetsSyncState('done');
+      if (sheetsResetRef.current) clearTimeout(sheetsResetRef.current);
+      sheetsResetRef.current = setTimeout(() => setSheetsSyncState('idle'), 2200);
+    } catch (e) {
+      console.error(e);
+      setSheetsSyncState('error');
+      setSheetsSyncError(e instanceof Error ? e.message : String(e));
+      if (sheetsResetRef.current) clearTimeout(sheetsResetRef.current);
+      sheetsResetRef.current = setTimeout(() => setSheetsSyncState('idle'), 4500);
+    }
+  };
+
+  useEffect(() => () => { if (sheetsResetRef.current) clearTimeout(sheetsResetRef.current); }, []);
 
   const members: Member[] = useMemo(() =>
     (rawMembers ?? []).map(m => ({
@@ -502,6 +583,7 @@ export default function TransactionLogScreen() {
       orderNumber: tx.orderNumber,
       timestamp: new Date(tx.timestamp),
       total: tx.total,
+      discount: tx.discount ?? 0,
       remarks: tx.remarks,
       memberId: tx.memberId as string | undefined,
       memberName: tx.memberName,
@@ -700,6 +782,12 @@ export default function TransactionLogScreen() {
                           <span style={{ fontSize: '9px', color: '#4a90d9', maxWidth: 90, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tx.remarks}</span>
                         </div>
                       )}
+                      {tx.discount > 0 && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }} aria-label={`Diskon ${formatRupiah(tx.discount)}`}>
+                          <span style={{ fontSize: '9px', fontWeight: 700, color: '#d4183d' }}>%</span>
+                          <span style={{ fontSize: '9px', color: '#d4183d', whiteSpace: 'nowrap' }}>−{formatRupiah(tx.discount)}</span>
+                        </div>
+                      )}
                     </div>
                     <span style={{ fontSize: '15px', fontWeight: 700, color: '#2d3142' }}>{formatRupiah(tx.total)}</span>
                   </div>
@@ -726,6 +814,22 @@ export default function TransactionLogScreen() {
                       <div style={{ display: 'flex', gap: 6, paddingTop: 10, marginTop: 4 }}>
                         <MessageSquare size={11} color="#4a90d9" style={{ flexShrink: 0, marginTop: 1 }} />
                         <span style={{ fontSize: '11px', color: '#4a4e69', fontStyle: 'italic' }}>{tx.remarks}</span>
+                      </div>
+                    )}
+                    {tx.discount > 0 && (
+                      <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px solid rgba(0,0,0,0.06)', display: 'flex', flexDirection: 'column', gap: 3 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ fontSize: '10px', color: '#9a9db5' }}>Subtotal</span>
+                          <span style={{ fontSize: '11px', color: '#9a9db5' }}>{formatRupiah(tx.total + tx.discount)}</span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ fontSize: '10px', color: '#d4183d', fontWeight: 600 }}>Diskon</span>
+                          <span style={{ fontSize: '11px', color: '#d4183d', fontWeight: 600 }}>−{formatRupiah(tx.discount)}</span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 3, borderTop: '1px solid rgba(0,0,0,0.05)' }}>
+                          <span style={{ fontSize: '10px', color: '#2d3142', fontWeight: 700 }}>Total</span>
+                          <span style={{ fontSize: '12px', color: '#2d3142', fontWeight: 700 }}>{formatRupiah(tx.total)}</span>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -832,6 +936,9 @@ export default function TransactionLogScreen() {
           from { opacity: 0; transform: translateY(-4px) scale(0.98); }
           to   { opacity: 1; transform: translateY(0) scale(1); }
         }
+        @keyframes sheets-sync-spin {
+          to { transform: rotate(360deg); }
+        }
         @media (prefers-reduced-motion: reduce) {
           * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
         }
@@ -842,7 +949,7 @@ export default function TransactionLogScreen() {
           transaction={editingTx}
           members={members}
           onClose={() => setEditingTx(null)}
-          onSave={(items, remarks, memberId, memberName) => {
+          onSave={(items, remarks, discount, memberId) => {
             const originalIds = new Set(editingTx.items.map(i => i.id));
             const newIds      = new Set(items.map(i => i.id));
             const removedItemIds = [...originalIds].filter(id => !newIds.has(id));
@@ -856,6 +963,7 @@ export default function TransactionLogScreen() {
               removedItemIds: removedItemIds as Id<'transactionItems'>[],
               remarks: remarks || undefined,
               memberId: memberId as Id<'members'> | undefined,
+              discount,
             }).catch(console.error);
             const txId = editingTx.id;
             if (savedIdTimerRef.current) clearTimeout(savedIdTimerRef.current);
@@ -973,20 +1081,33 @@ export default function TransactionLogScreen() {
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5 }}>
                 <button
                   aria-label="Sinkron ke Google Sheets"
-                  onClick={e => { e.stopPropagation(); alert('Google Sheets belum dikonfigurasi.'); }}
+                  title={sheetsSyncError ?? (sheetsSyncState === 'done' ? 'Tersinkron' : 'Sinkron ke Google Sheets')}
+                  disabled={sheetsSyncState === 'syncing'}
+                  onClick={e => { e.stopPropagation(); handleSheetsSync(); }}
                   onPointerDown={() => setPressedBtn('slide3_sync')}
                   onPointerUp={() => setPressedBtn(null)}
                   onPointerLeave={() => setPressedBtn(null)}
                   style={{
-                    width: 44, height: 44, borderRadius: '50%', border: 'none', cursor: 'pointer',
+                    width: 44, height: 44, borderRadius: '50%', border: 'none',
+                    cursor: sheetsSyncState === 'syncing' ? 'default' : 'pointer',
                     background: '#eef0f5',
-                    boxShadow: pressedBtn === 'slide3_sync' ? SHD_RECESSED : SHD_RAISED_STD,
+                    boxShadow: pressedBtn === 'slide3_sync' || sheetsSyncState === 'syncing' ? SHD_RECESSED : SHD_RAISED_STD,
                     transform: pressedBtn === 'slide3_sync' ? 'scale(0.93)' : 'scale(1)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     transition: 'box-shadow 0.07s, transform 0.07s',
                   }}
                 >
-                  <FileSpreadsheet size={14} color="#34a853" />
+                  {sheetsSyncState === 'syncing' ? (
+                    <div style={{
+                      width: 14, height: 14, borderRadius: '50%',
+                      border: '2px solid #c0c4d0', borderTopColor: '#34a853',
+                      animation: 'sheets-sync-spin 0.7s linear infinite',
+                    }} />
+                  ) : sheetsSyncState === 'done' ? (
+                    <Check size={14} color="#52b96a" />
+                  ) : (
+                    <FileSpreadsheet size={14} color={sheetsSyncState === 'error' ? '#d4183d' : '#34a853'} />
+                  )}
                 </button>
                 <span style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5', letterSpacing: '0.03em' }}>Sheets</span>
               </div>
