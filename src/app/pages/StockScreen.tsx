@@ -719,7 +719,7 @@ export default function StockScreen() {
             aria-label="Sinkronkan ke Google Sheets"
             title={syncError ?? (syncState === 'done' ? 'Tersinkron' : 'Sinkron ke Google Sheets')}
             style={{
-              height: 38, width: 44, borderRadius: '11px', border: 'none',
+              height: 32, width: 34, borderRadius: '9px', border: 'none',
               cursor: syncState === 'syncing' ? 'default' : 'pointer',
               background: '#eef0f5',
               boxShadow: syncState === 'syncing' ? SHD_RECESSED : SHD_RAISED_STD,
@@ -730,23 +730,23 @@ export default function StockScreen() {
           >
             {syncState === 'syncing' ? (
               <div style={{
-                width: 14, height: 14, borderRadius: '50%',
+                width: 12, height: 12, borderRadius: '50%',
                 border: '2px solid #c0c4d0', borderTopColor: '#34a853',
                 animation: 'sync-spin 0.7s linear infinite',
               }} />
             ) : syncState === 'done' ? (
-              <Check size={15} />
+              <Check size={13} />
             ) : (
-              <FileSpreadsheet size={15} />
+              <FileSpreadsheet size={13} />
             )}
           </button>
           <button onClick={() => setShowAddStock(true)} style={{
-            height: 38, padding: '0 14px', borderRadius: '11px', border: 'none', cursor: 'pointer',
+            height: 32, padding: '0 11px', borderRadius: '9px', border: 'none', cursor: 'pointer',
             background: '#eef0f5', boxShadow: SHD_RAISED_STD,
-            display: 'flex', alignItems: 'center', gap: 5, color: '#4a90d9', fontSize: '12px', fontWeight: 600,
+            display: 'flex', alignItems: 'center', gap: 4, color: '#4a90d9', fontSize: '11px', fontWeight: 600,
             transition: 'box-shadow 0.12s',
           }}>
-            <Plus size={14} /> Tambah Stok
+            <Plus size={12} /> Tambah Stok
           </button>
         </div>
       </div>

@@ -61,7 +61,8 @@ export default defineSchema({
     date: v.string(),        // "YYYY-MM-DD" — drives daily grouping and orderNumber reset
     timestamp: v.number(),   // Unix ms — precise time for sorting within a day
     totalAmount: v.number(), // Final amount paid = SUM(items.totalAmount) - (discount ?? 0). Denormalized for fast daily totals.
-    discount: v.optional(v.number()), // Rupiah amount subtracted from subtotal. Absent on legacy rows.
+    discount: v.optional(v.number()),   // Rupiah amount subtracted from subtotal. Absent on legacy rows.
+    amountPaid: v.optional(v.number()), // Absent = fully paid (totalAmount). 0 = unpaid/debt.
     remarks: v.optional(v.string()),
     memberId: v.optional(v.id("members")),
   })
@@ -78,6 +79,19 @@ export default defineSchema({
     unitPrice: v.number(),   // Price snapshot at time of sale — never recomputed
     totalAmount: v.number(), // quantity * unitPrice, denormalized for convenience
   }).index("by_transactionId", ["transactionId"]),
+
+  // ─── Payments (debt repayment records) ───────────────────────────────────────
+
+  // Each row is one payment event against a transaction.
+  // Outstanding balance = transaction.totalAmount - (transaction.amountPaid ?? totalAmount) - SUM(payments.amount)
+  payments: defineTable({
+    transactionId: v.id("transactions"),
+    date: v.string(),     // "YYYY-MM-DD"
+    amount: v.number(),
+    timestamp: v.number(),
+  })
+    .index("by_transactionId", ["transactionId"])
+    .index("by_timestamp", ["timestamp"]),
 
   // ─── Stock ───────────────────────────────────────────────────────────────────
 

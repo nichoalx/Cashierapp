@@ -1,8 +1,10 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useQuery, useMutation } from 'convex/react';
+import { useNavigate } from 'react-router';
 import { api } from '../../../convex/_generated/api';
 import { Id } from '../../../convex/_generated/dataModel';
-import { Search, UserPlus, Trash2, Phone, User, X, Users } from 'lucide-react';
+import { formatRupiah } from '../store';
+import { Search, UserPlus, Trash2, Phone, User, X, Users, ChevronRight } from 'lucide-react';
 
 const SHD_RAISED_STD    = '4px 4px 9px #c8cad1, -4px -4px 9px #ffffff';
 const SHD_RAISED_LIST   = '3px 3px 7px #c8cad1, -3px -3px 7px rgba(255,255,255,0.92)';
@@ -52,15 +54,17 @@ interface Member {
   id: Id<'members'>;
   name: string;
   phone: string;
+  outstanding: number;
 }
 
 export default function MembersScreen() {
   const rawMembers = useQuery(api.members.list);
   const addMemberMutation = useMutation(api.members.add);
   const removeMemberMutation = useMutation(api.members.remove);
+  const navigate = useNavigate();
 
   const members: Member[] = useMemo(
-    () => (rawMembers ?? []).map(m => ({ id: m._id, name: m.name, phone: m.phone ?? '' })),
+    () => (rawMembers ?? []).map(m => ({ id: m._id, name: m.name, phone: m.phone ?? '', outstanding: m.outstanding ?? 0 })),
     [rawMembers],
   );
 
@@ -522,12 +526,18 @@ export default function MembersScreen() {
               <li key={m.id} style={{ listStyle: 'none', flexShrink: 0 }}>
               <div
                 ref={justAdded ? recentlyAddedRef : undefined}
+                onClick={() => navigate(`/members/${m.id}`)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') navigate(`/members/${m.id}`); }}
+                aria-label={`Lihat detail ${m.name}`}
                 style={{
                   background: '#eef0f5',
                   boxShadow: SHD_RAISED_LIST,
                   borderRadius: '14px',
                   padding: '12px 14px',
                   display: 'flex', alignItems: 'center', gap: 12,
+                  cursor: 'pointer',
                   ...(justAdded && { animation: 'card-added 1400ms cubic-bezier(0.16, 1, 0.3, 1) both' }),
                 }}
               >
@@ -549,16 +559,27 @@ export default function MembersScreen() {
                     {m.name}
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                    <Phone size={10} color="#c0c4d0" />
-                    <span style={{ fontSize: '11px', color: '#4a4e69' }}>
-                      {m.phone ? formatPhone(m.phone) : '—'}
-                    </span>
+                    {m.outstanding > 0 ? (
+                      <span style={{ fontSize: '11px', color: '#d4a017', fontWeight: 600 }}>
+                        Hutang {formatRupiah(m.outstanding)}
+                      </span>
+                    ) : (
+                      <>
+                        <Phone size={10} color="#c0c4d0" />
+                        <span style={{ fontSize: '11px', color: '#4a4e69' }}>
+                          {m.phone ? formatPhone(m.phone) : '—'}
+                        </span>
+                      </>
+                    )}
                   </div>
                 </div>
 
-                {/* Delete */}
+                {/* Delete + chevron */}
                 {confirming ? (
-                  <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
+                  <div
+                    onClick={e => e.stopPropagation()}
+                    style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}
+                  >
                     <span style={{ fontSize: '11px', color: '#9a9db5' }}>Hapus?</span>
                     <button
                       onClick={() => handleDelete(m.id)}
@@ -585,18 +606,21 @@ export default function MembersScreen() {
                     </button>
                   </div>
                 ) : (
-                  <button
-                    onClick={() => setDeleteConfirm(m.id)}
-                    aria-label={`Hapus ${m.name}`}
-                    style={{
-                      width: 44, height: 44, borderRadius: '9px', border: 'none', cursor: 'pointer',
-                      background: '#eef0f5',
-                      boxShadow: SHD_RAISED_STD,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    }}
-                  >
-                    <Trash2 size={13} color="#c0c4d0" />
-                  </button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                    <button
+                      onClick={e => { e.stopPropagation(); setDeleteConfirm(m.id); }}
+                      aria-label={`Hapus ${m.name}`}
+                      style={{
+                        width: 36, height: 36, borderRadius: '9px', border: 'none', cursor: 'pointer',
+                        background: '#eef0f5',
+                        boxShadow: SHD_RAISED_STD,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}
+                    >
+                      <Trash2 size={13} color="#c0c4d0" />
+                    </button>
+                    <ChevronRight size={14} color="#c0c4d0" />
+                  </div>
                 )}
               </div>
               </li>

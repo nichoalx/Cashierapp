@@ -24,6 +24,12 @@ export default function WelcomeScreen() {
     return () => clearTimeout(t);
   }, []);
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Enter') handleTap(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [exiting, isLoading]);
+
   const handleTap = () => {
     if (exiting || isLoading) return;
     setExiting(true);

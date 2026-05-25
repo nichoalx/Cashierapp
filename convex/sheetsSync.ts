@@ -24,6 +24,11 @@ function tabNameForMonth(yearMonth: string): string {
   return `${MONTH_LABELS[m - 1]} ${yStr}`;
 }
 
+function formatDateDMY(isoDate: string): string {
+  const [y, m, d] = isoDate.split("-");
+  return `${d}-${m}-${y}`;
+}
+
 function getSheetsClient() {
   const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
   const sheetId = process.env.GOOGLE_SHEET_ID;
@@ -106,32 +111,44 @@ async function buildMonthGrid(args: {
   }>;
   snapshots: Array<{ date: string; productId: Id<"products">; variantId?: Id<"productVariants">; quantity: number }>;
   productInfo: Array<{ productId: Id<"products">; variantId?: Id<"productVariants">; label: string; unit: string }>;
-}): Promise<{ grid: (string | number)[][]; stockHeaderRows: number[] }> {
+}): Promise<{ grid: (string | number)[][]; stockHeaderRows: number[]; dateHeaderRows: number[] }> {
   const txHeader: string[] = [
     "Date", "Order", "Time", "Product", "Qty", "Unit",
     "Unit Price", "Item Total", "Discount", "Tx Total", "Member", "Remarks",
   ];
   const txRows: (string | number)[][] = [];
+  const dateHeaderTxIndices: number[] = [];
+
+  const txByDate = new Map<string, typeof args.txDetails>();
   for (const tx of args.txDetails) {
-    const time = new Date(tx.timestamp).toLocaleTimeString("id-ID", {
-      hour: "2-digit", minute: "2-digit", hour12: false,
-    });
-    for (let i = 0; i < tx.items.length; i++) {
-      const item = tx.items[i];
-      txRows.push([
-        i === 0 ? tx.date : "",
-        i === 0 ? tx.orderNumber : "",
-        i === 0 ? time : "",
-        item.productName,
-        item.quantity,
-        item.unit,
-        Math.round(item.unitPrice),
-        Math.round(item.totalAmount),
-        i === 0 ? Math.round(tx.discount) : "",
-        i === 0 ? Math.round(tx.totalAmount) : "",
-        i === 0 ? tx.memberName : "",
-        i === 0 ? tx.remarks : "",
-      ]);
+    let group = txByDate.get(tx.date);
+    if (!group) { group = []; txByDate.set(tx.date, group); }
+    group.push(tx);
+  }
+  for (const date of [...txByDate.keys()].sort()) {
+    dateHeaderTxIndices.push(txRows.length);
+    txRows.push([formatDateDMY(date), "", "", "", "", "", "", "", "", "", "", ""]);
+    for (const tx of txByDate.get(date)!) {
+      const time = new Date(tx.timestamp).toLocaleTimeString("id-ID", {
+        hour: "2-digit", minute: "2-digit", hour12: false,
+      });
+      for (let i = 0; i < tx.items.length; i++) {
+        const item = tx.items[i];
+        txRows.push([
+          "",
+          i === 0 ? tx.orderNumber : "",
+          i === 0 ? time : "",
+          item.productName,
+          item.quantity,
+          item.unit,
+          Math.round(item.unitPrice),
+          Math.round(item.totalAmount),
+          i === 0 ? Math.round(tx.discount) : "",
+          i === 0 ? Math.round(tx.totalAmount) : "",
+          i === 0 ? tx.memberName : "",
+          i === 0 ? tx.remarks : "",
+        ]);
+      }
     }
   }
 
@@ -186,7 +203,8 @@ async function buildMonthGrid(args: {
     grid.push([...left, ...Array(GAP).fill(""), ...right]);
   }
 
-  return { grid, stockHeaderRows };
+  const dateHeaderRows = dateHeaderTxIndices.map(i => i + 1); // +1 for the column header row
+  return { grid, stockHeaderRows, dateHeaderRows };
 }
 
 // ─── Formatting ──────────────────────────────────────────────────────────────
@@ -199,6 +217,8 @@ const COLORS = {
   headerFg:       rgb(221, 226, 240),  // #dde2f0
   stockHeaderBg:  rgb(232, 236, 246),  // #e8ecf6
   stockHeaderFg:  rgb(45, 49, 66),     // #2d3142
+  dateBandBg:     rgb(200, 210, 232),  // #c8d2e8
+  dateBandFg:     rgb(30, 35, 60),     // #1e233c
   positive:       rgb(52, 168, 83),    // #34a853
   negative:       rgb(212, 24, 61),    // #d4183d
   divider:        rgb(200, 202, 209),  // #c8cad1
@@ -212,6 +232,7 @@ async function applyMonthFormatting(
   sheetId: number,
   totalRows: number,
   stockHeaderRows: number[],
+  dateHeaderRows: number[],
   existingRuleCount: number,
 ): Promise<void> {
   const requests: SheetsRequest[] = [];
@@ -280,6 +301,23 @@ async function applyMonthFormatting(
       fields: "userEnteredFormat.numberFormat",
     },
   });
+
+  // Date group header rows — colored band across tx columns A–L
+  for (const rowIdx of dateHeaderRows) {
+    requests.push({
+      repeatCell: {
+        range: { sheetId, startRowIndex: rowIdx, endRowIndex: rowIdx + 1, startColumnIndex: 0, endColumnIndex: 12 },
+        cell: {
+          userEnteredFormat: {
+            backgroundColor: COLORS.dateBandBg,
+            textFormat: { foregroundColor: COLORS.dateBandFg, bold: true, fontSize: 10 },
+            horizontalAlignment: "LEFT",
+          },
+        },
+        fields: "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)",
+      },
+    });
+  }
 
   // Stock block header rows (date + AMOUNT + Δ labels) — bold + highlight
   for (const rowIdx of stockHeaderRows) {
@@ -430,18 +468,103 @@ async function applyMembersFormatting(
   });
 }
 
+async function applyPaymentsFormatting(
+  sheets: ReturnType<typeof google.sheets>,
+  spreadsheetId: string,
+  sheetId: number,
+  totalRows: number,
+): Promise<void> {
+  const requests: SheetsRequest[] = [
+    {
+      updateSheetProperties: {
+        properties: { sheetId, gridProperties: { frozenRowCount: 1 } },
+        fields: "gridProperties.frozenRowCount",
+      },
+    },
+    {
+      repeatCell: {
+        range: { sheetId, startRowIndex: 0, endRowIndex: 1 },
+        cell: {
+          userEnteredFormat: {
+            backgroundColor: COLORS.headerBg,
+            textFormat: { foregroundColor: COLORS.headerFg, bold: true, fontSize: 10 },
+            horizontalAlignment: "CENTER",
+            verticalAlignment: "MIDDLE",
+          },
+        },
+        fields: "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment)",
+      },
+    },
+    // Currency: Tx Total (col D = index 3) and Payment Amount (col F = index 5)
+    {
+      repeatCell: {
+        range: { sheetId, startRowIndex: 1, endRowIndex: totalRows, startColumnIndex: 3, endColumnIndex: 4 },
+        cell: { userEnteredFormat: { numberFormat: { type: "NUMBER", pattern: '"Rp "#,##0' } } },
+        fields: "userEnteredFormat.numberFormat",
+      },
+    },
+    {
+      repeatCell: {
+        range: { sheetId, startRowIndex: 1, endRowIndex: totalRows, startColumnIndex: 5, endColumnIndex: 6 },
+        cell: { userEnteredFormat: { numberFormat: { type: "NUMBER", pattern: '"Rp "#,##0' } } },
+        fields: "userEnteredFormat.numberFormat",
+      },
+    },
+    // Column widths
+    ...[55, 110, 150, 110, 110, 110].map((w, i) => ({
+      updateDimensionProperties: {
+        range: { sheetId, dimension: "COLUMNS", startIndex: i, endIndex: i + 1 },
+        properties: { pixelSize: w },
+        fields: "pixelSize",
+      },
+    })),
+    {
+      updateDimensionProperties: {
+        range: { sheetId, dimension: "ROWS", startIndex: 0, endIndex: 1 },
+        properties: { pixelSize: 30 },
+        fields: "pixelSize",
+      },
+    },
+  ];
+
+  await sheets.spreadsheets.batchUpdate({
+    spreadsheetId,
+    requestBody: { requests },
+  });
+}
+
 // ─── Workers (reusable across public actions) ────────────────────────────────
 
 async function doSyncMonth(ctx: ActionCtx, yearMonth: string) {
   await ctx.runMutation(internal.sheetsSyncData.takeSnapshotIfMissing, {});
   const data = await ctx.runQuery(internal.sheetsSyncData.getMonthData, { yearMonth });
-  const { grid, stockHeaderRows } = await buildMonthGrid(data);
+  const { grid, stockHeaderRows, dateHeaderRows } = await buildMonthGrid(data);
   const tab = tabNameForMonth(yearMonth);
   const { sheets, sheetId } = getSheetsClient();
   const { sheetId: tabSheetId, existingRuleCount } = await ensureTab(sheets, sheetId, tab);
   await writeTab(sheets, sheetId, tab, grid);
-  await applyMonthFormatting(sheets, sheetId, tabSheetId, grid.length, stockHeaderRows, existingRuleCount);
+  await applyMonthFormatting(sheets, sheetId, tabSheetId, grid.length, stockHeaderRows, dateHeaderRows, existingRuleCount);
   return { tab, rows: grid.length };
+}
+
+async function doSyncPayments(ctx: ActionCtx) {
+  const payments = await ctx.runQuery(internal.sheetsSyncData.getPaymentsForSync, {});
+  const grid: (string | number)[][] = [
+    ["Order #", "Tx Date", "Member", "Tx Total", "Payment Date", "Amount"],
+    ...payments.map(p => [
+      p.orderNumber,
+      p.txDate,
+      p.memberName,
+      Math.round(p.txTotal),
+      p.paymentDate,
+      Math.round(p.amount),
+    ] as (string | number)[]),
+  ];
+  const { sheets, sheetId } = getSheetsClient();
+  const { sheetId: tabSheetId } = await ensureTab(sheets, sheetId, "Payments");
+  await writeTab(sheets, sheetId, "Payments", grid);
+  await applyPaymentsFormatting(sheets, sheetId, tabSheetId, grid.length);
+  return { rows: grid.length };
 }
 
 async function doSyncMembers(ctx: ActionCtx) {
@@ -482,15 +605,26 @@ export const syncMembers = action({
   },
 });
 
+export const syncPayments = action({
+  args: {},
+  handler: async (ctx): Promise<{ ok: true; rows: number }> => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Unauthorized");
+    const result = await doSyncPayments(ctx);
+    return { ok: true, ...result };
+  },
+});
+
 export const syncAll = action({
   args: {},
-  handler: async (ctx): Promise<{ ok: true; tab: string; monthRows: number; memberRows: number }> => {
+  handler: async (ctx): Promise<{ ok: true; tab: string; monthRows: number; memberRows: number; paymentRows: number }> => {
     const userId = await getAuthUserId(ctx);
     if (!userId) throw new Error("Unauthorized");
     const now = new Date();
     const yearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
     const month = await doSyncMonth(ctx, yearMonth);
     const members = await doSyncMembers(ctx);
-    return { ok: true, tab: month.tab, monthRows: month.rows, memberRows: members.rows };
+    const paymentsResult = await doSyncPayments(ctx);
+    return { ok: true, tab: month.tab, monthRows: month.rows, memberRows: members.rows, paymentRows: paymentsResult.rows };
   },
 });

@@ -1,9 +1,10 @@
-import React, { useState, useCallback, useMemo } from 'react';
-import { X, MessageSquare, User, Check } from 'lucide-react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import { X, MessageSquare, User, Check, CreditCard } from 'lucide-react';
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '../../../convex/_generated/api';
 import { Id } from '../../../convex/_generated/dataModel';
 import { useAppStore, formatRupiah, TransactionItem } from '../store';
+import { useCompact } from '../hooks/useCompact';
 import { PriceTicker } from '../components/PriceTicker';
 import { PriceEditorModal } from '../components/PriceEditorModal';
 import { Numpad } from '../components/Numpad';
@@ -134,17 +135,26 @@ export default function HomeScreen() {
   const [step, setStep] = useState<Step>({ type: 'idle' });
   const [inputValue, setInputValue] = useState('0');
   const [showPriceEditor, setShowPriceEditor] = useState(false);
-  const [completedFlash, setCompletedFlash] = useState(false);
   const [showRemarksModal, setShowRemarksModal] = useState(false);
   const [showMemberPicker, setShowMemberPicker] = useState(false);
   const [pressedIcon, setPressedIcon] = useState<string | null>(null);
   const [pressedRemove, setPressedRemove] = useState<string | null>(null);
   const [discountMode, setDiscountMode] = useState(false);
   const [discountInput, setDiscountInput] = useState('0');
-  const pendingTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const phaseTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [pendingComplete, setPendingComplete] = useState<null | { items: TransactionItem[]; remarks: string; memberId?: string; memberName?: string; discount: number }>(null);
-  const [undoVisible, setUndoVisible] = useState(false);
+  const [debtMode, setDebtMode] = useState(false);
+  const compact = useCompact();
+
+  // Auto-clear kredit when member is deselected
+  useEffect(() => {
+    if (!selectedMember) setDebtMode(false);
+  }, [selectedMember]);
+
+  // Payment confirmation phase (after Selesai, before commit)
+  type PayStash = { items: TransactionItem[]; remarks: string; memberId?: string; memberName?: string; discount: number };
+  const [payPhase, setPayPhase] = useState<'idle' | 'payment' | 'success'>('idle');
+  const [payStash, setPayStash] = useState<PayStash | null>(null);
+  const [payIsDebt, setPayIsDebt] = useState(false);
+  const [cashInput, setCashInput] = useState(''); // raw digits only
 
   const appliedDiscount = parseFloat(discountInput) || 0;
 
@@ -226,12 +236,34 @@ export default function HomeScreen() {
     setInputValue('0');
   }, [selectedProduct, inputValue, items, eceranPrice, plasticProduct]);
 
+  const doCommit = useCallback((stash: PayStash, isDebt: boolean, cashPaid: number) => {
+    const total = Math.max(0, stash.items.reduce((s, i) => s + i.total, 0) - stash.discount);
+    const amountPaid = isDebt ? 0 : (cashPaid > 0 && cashPaid < total ? cashPaid : undefined);
+    createTx({
+      items: stash.items.map(item => ({
+        productId: item.productId as Id<'products'>,
+        variantId: item.variantId as Id<'productVariants'> | undefined,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        totalAmount: item.total,
+      })),
+      remarks: stash.remarks || undefined,
+      memberId: stash.memberId as Id<'members'> | undefined,
+      discount: stash.discount > 0 ? stash.discount : undefined,
+      amountPaid,
+    }).catch(console.error);
+    setPayPhase('success');
+    setPayStash(null);
+    setCashInput('');
+    setTimeout(() => { setPayPhase('idle'); setPayIsDebt(false); }, 1200);
+  }, [createTx]);
+
   const handleComplete = useCallback(() => {
     if (items.length === 0) return;
     const discountAmount = parseFloat(discountInput) || 0;
-    const stash = { items: [...items], remarks: remarks.trim(), memberId: selectedMember?.id, memberName: selectedMember?.name, discount: discountAmount };
-    setPendingComplete(stash);
-    setUndoVisible(false);
+    const stash: PayStash = { items: [...items], remarks: remarks.trim(), memberId: selectedMember?.id, memberName: selectedMember?.name, discount: discountAmount };
+    const isDebt = debtMode;
+
     setItems([]);
     setStep({ type: 'idle' });
     setInputValue('0');
@@ -239,44 +271,31 @@ export default function HomeScreen() {
     setSelectedMember(null);
     setDiscountMode(false);
     setDiscountInput('0');
-    setCompletedFlash(true);
-    if (pendingTimerRef.current) clearTimeout(pendingTimerRef.current);
-    if (phaseTimerRef.current) clearTimeout(phaseTimerRef.current);
-    phaseTimerRef.current = setTimeout(() => setUndoVisible(true), 600);
-    pendingTimerRef.current = setTimeout(() => {
-      createTx({
-        items: stash.items.map(item => ({
-          productId: item.productId as Id<'products'>,
-          variantId: item.variantId as Id<'productVariants'> | undefined,
-          quantity: item.quantity,
-          unitPrice: item.unitPrice,
-          totalAmount: item.total,
-        })),
-        remarks: stash.remarks || undefined,
-        memberId: stash.memberId as Id<'members'> | undefined,
-        discount: stash.discount > 0 ? stash.discount : undefined,
-      }).catch(console.error);
-      setPendingComplete(null);
-      setCompletedFlash(false);
-      setUndoVisible(false);
-    }, 1500);
-  }, [items, remarks, selectedMember, createTx, discountInput]);
+    setDebtMode(false);
 
-  const handleUndo = useCallback(() => {
-    if (pendingTimerRef.current) clearTimeout(pendingTimerRef.current);
-    if (phaseTimerRef.current) clearTimeout(phaseTimerRef.current);
-    if (pendingComplete) {
-      setItems(pendingComplete.items);
-      setRemarks(pendingComplete.remarks);
-      setSelectedMember(pendingComplete.memberId ? (members.find(m => m.id === pendingComplete.memberId) ?? null) : null);
-      if (pendingComplete.discount > 0) {
-        setDiscountInput(String(pendingComplete.discount));
-      }
+    setPayStash(stash);
+    setPayIsDebt(isDebt);
+    setCashInput('');
+    setPayPhase('payment');
+  }, [items, remarks, selectedMember, discountInput, debtMode]);
+
+  const handlePayConfirm = useCallback((overrideDebt?: boolean) => {
+    if (payStash) doCommit(payStash, overrideDebt ?? payIsDebt, Number(cashInput));
+  }, [payStash, payIsDebt, doCommit, cashInput]);
+
+  const handlePayUndo = useCallback(() => {
+    if (payStash) {
+      setItems(payStash.items);
+      setRemarks(payStash.remarks);
+      setSelectedMember(payStash.memberId ? (members.find(m => m.id === payStash.memberId) ?? null) : null);
+      if (payStash.discount > 0) setDiscountInput(String(payStash.discount));
+      setDebtMode(payIsDebt);
     }
-    setPendingComplete(null);
-    setCompletedFlash(false);
-    setUndoVisible(false);
-  }, [pendingComplete, members]);
+    setPayPhase('idle');
+    setPayStash(null);
+    setPayIsDebt(false);
+    setCashInput('');
+  }, [payStash, payIsDebt, members]);
 
   const removeItem = useCallback((id: string) => setItems(items.filter(x => x.id !== id)), [items]);
   const subtotal = items.reduce((s, i) => s + i.total, 0);
@@ -294,19 +313,19 @@ export default function HomeScreen() {
     borderRadius: '11px',
     border: 'none',
     cursor: 'pointer',
-    padding: '11px 8px',
+    padding: compact ? '5px 6px' : '7px 8px',
     display: 'flex',
     flexDirection: 'column' as const,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 2,
     transition: 'box-shadow 0.15s, background 0.15s',
-    minWidth: 48,
+    minWidth: compact ? 40 : 48,
     flex: 1,
   });
 
   return (
-    <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: '14px var(--app-page-gutter) var(--app-content-bottom)', gap: 12 }}>
+    <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: `${compact ? 10 : 14}px var(--app-page-gutter) var(--app-content-bottom)`, gap: compact ? 8 : 12 }}>
       {showPriceEditor && <PriceEditorModal onClose={() => setShowPriceEditor(false)} />}
       {showRemarksModal && (
         <RemarksModal
@@ -329,118 +348,182 @@ export default function HomeScreen() {
       </div>
 
       {/* Keranjang */}
-      <div style={{ position: 'relative', flex: '1 1 auto', minHeight: 60, maxHeight: 200 }}>
-      <div
-        role="region"
-        aria-label="Keranjang"
-        style={{
-          overflow: 'auto',
-          overscrollBehavior: 'contain',
-          WebkitOverflowScrolling: 'touch',
-          background: '#eef0f5',
-          boxShadow: 'inset 3px 3px 8px #c8cad1, inset -3px -3px 8px #ffffff',
-          borderRadius: '14px',
-          padding: '11px 13px',
-          display: 'flex', flexDirection: 'column', gap: 0, height: '100%', boxSizing: 'border-box',
-        }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
-          <span style={{ fontSize: '9px', color: '#9a9db5', letterSpacing: '0.08em', fontWeight: 600 }}>
-            KERANJANG{items.length > 0 ? ` (${items.length})` : ''}
-          </span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <button
-              aria-label="Tambah catatan"
-              onClick={() => setShowRemarksModal(true)}
-              onPointerDown={() => setPressedIcon('remarks')}
-              onPointerUp={() => setPressedIcon(null)}
-              onPointerLeave={() => setPressedIcon(null)}
-              style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '10px 8px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}
-            >
-              <MessageSquare size={15} color={remarks ? '#4a90d9' : '#c0c4d0'} style={{ transform: pressedIcon === 'remarks' ? 'scale(0.75)' : 'scale(1)', transition: 'transform 0.08s cubic-bezier(0.16, 1, 0.3, 1)' }} />
-              <span style={{ fontSize: '8px', color: remarks ? '#4a90d9' : '#c0c4d0', lineHeight: 1, userSelect: 'none' }}>Catatan</span>
-            </button>
-            <button
-              aria-label="Pilih pembeli"
-              onClick={() => setShowMemberPicker(true)}
-              onPointerDown={() => setPressedIcon('member')}
-              onPointerUp={() => setPressedIcon(null)}
-              onPointerLeave={() => setPressedIcon(null)}
-              style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '10px 8px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}
-            >
-              <User size={15} color={selectedMember ? '#4a90d9' : '#c0c4d0'} style={{ transform: pressedIcon === 'member' ? 'scale(0.75)' : 'scale(1)', transition: 'transform 0.08s cubic-bezier(0.16, 1, 0.3, 1)' }} />
-              <span style={{ fontSize: '8px', color: selectedMember ? '#4a90d9' : '#c0c4d0', lineHeight: 1, userSelect: 'none' }}>Pembeli</span>
-            </button>
-          </div>
-        </div>
+      <div style={{ flex: '1 1 auto', minHeight: 80 }}>
+        <div
+          role="region"
+          aria-label="Keranjang"
+          style={{
+            background: '#eef0f5',
+            boxShadow: 'inset 3px 3px 8px #c8cad1, inset -3px -3px 8px #ffffff',
+            borderRadius: '14px',
+            padding: compact ? '8px 10px' : '11px 13px',
+            display: 'flex', flexDirection: 'column',
+            height: '100%', boxSizing: 'border-box',
+            overflow: 'hidden',
+          }}>
 
-        {selectedMember && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 5 }}>
-            <User size={9} color="#4a90d9" style={{ flexShrink: 0 }} />
-            <span style={{ fontSize: '10px', color: '#4a90d9', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{selectedMember.name}</span>
-          </div>
-        )}
-
-        {items.length === 0 && !completedFlash ? (
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <span style={{ fontSize: '11px', color: '#c0c4d0' }}>Pilih produk & masukkan jumlah</span>
-          </div>
-        ) : completedFlash ? (
-          !undoVisible ? (
-            <div role="alert" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, animation: 'flash-in 200ms cubic-bezier(0.16, 1, 0.3, 1) both' }}>
-              <div style={{ width: 22, height: 22, borderRadius: '50%', background: '#52b96a', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <Check size={13} color="#fff" strokeWidth={3} />
-              </div>
-              <span style={{ fontSize: '13px', fontWeight: 700, color: '#52b96a' }}>Transaksi Berhasil!</span>
-            </div>
-          ) : (
-            <div role="status" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, animation: 'flash-in 180ms cubic-bezier(0.16, 1, 0.3, 1) both' }}>
-              <span style={{ fontSize: '11px', color: '#9a9db5' }}>Transaksi disimpan</span>
-              <span style={{ fontSize: '11px', color: '#c0c4d0' }}>·</span>
-              <button
-                onClick={handleUndo}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '11px', fontWeight: 600, color: '#4a90d9', padding: 0 }}
-              >
-                Batalkan?
-              </button>
-            </div>
-          )
-        ) : (
-          <>
-            <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-            {items.map(item => (
-              <li key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 5, animation: 'cart-item-in 160ms cubic-bezier(0.16, 1, 0.3, 1) both' }}>
-                <div style={{ width: 6, height: 6, borderRadius: '50%', background: item.color, flexShrink: 0 }} />
-                <span style={{ fontSize: '11px', fontWeight: 600, color: '#2d3142', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
-                  {item.productShortName}{item.plasticSize ? ` ${item.plasticSize}` : ''}
-                </span>
-                <span style={{ fontSize: '10px', color: '#9a9db5' }}>
-                  {item.quantity % 1 === 0 ? item.quantity : item.quantity.toFixed(1)} {item.unit}
-                </span>
-                <span style={{ fontSize: '11px', fontWeight: 700, color: '#4a4e69', minWidth: 72, textAlign: 'right' }}>
-                  {formatRupiah(item.total)}
-                </span>
+          {/* Locked header */}
+          <div style={{ flexShrink: 0 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
+              <span style={{ fontSize: '9px', color: '#9a9db5', letterSpacing: '0.08em', fontWeight: 600 }}>
+                KERANJANG{items.length > 0 ? ` (${items.length})` : ''}
+              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <button
-                  aria-label={`Hapus ${item.productShortName}`}
-                  onClick={() => removeItem(item.id)}
-                  onPointerDown={() => setPressedRemove(item.id)}
-                  onPointerUp={() => setPressedRemove(null)}
-                  onPointerLeave={() => setPressedRemove(null)}
-                  style={{ background: 'transparent', border: 'none', color: '#d4183d', cursor: 'pointer', padding: '16px 8px' }}
+                  aria-label="Tambah catatan"
+                  onClick={() => setShowRemarksModal(true)}
+                  onPointerDown={() => setPressedIcon('remarks')}
+                  onPointerUp={() => setPressedIcon(null)}
+                  onPointerLeave={() => setPressedIcon(null)}
+                  style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '6px 8px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}
                 >
-                  <X size={11} style={{ transform: pressedRemove === item.id ? 'scale(0.72)' : 'scale(1)', transition: 'transform 0.08s cubic-bezier(0.16, 1, 0.3, 1)' }} />
+                  <MessageSquare size={15} color={remarks ? '#4a90d9' : '#c0c4d0'} style={{ transform: pressedIcon === 'remarks' ? 'scale(0.75)' : 'scale(1)', transition: 'transform 0.08s cubic-bezier(0.16, 1, 0.3, 1)' }} />
+                  <span style={{ fontSize: '8px', color: remarks ? '#4a90d9' : '#c0c4d0', lineHeight: 1, userSelect: 'none' }}>Catatan</span>
                 </button>
-              </li>
-            ))}
-            </ul>
-            {/* Remarks in cart */}
-            {remarks && (
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 5, marginTop: 4, marginBottom: 4, paddingTop: 5, borderTop: '1px solid rgba(0,0,0,0.05)' }}>
-                <MessageSquare size={10} color="#9a9db5" style={{ marginTop: 1, flexShrink: 0 }} />
-                <span style={{ fontSize: '10px', color: '#9a9db5', fontStyle: 'italic', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const, flex: 1, minWidth: 0 }}>{remarks}</span>
+                <button
+                  aria-label="Pilih pembeli"
+                  onClick={() => setShowMemberPicker(true)}
+                  onPointerDown={() => setPressedIcon('member')}
+                  onPointerUp={() => setPressedIcon(null)}
+                  onPointerLeave={() => setPressedIcon(null)}
+                  style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '6px 8px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}
+                >
+                  <User size={15} color={selectedMember ? '#4a90d9' : '#c0c4d0'} style={{ transform: pressedIcon === 'member' ? 'scale(0.75)' : 'scale(1)', transition: 'transform 0.08s cubic-bezier(0.16, 1, 0.3, 1)' }} />
+                  <span style={{ fontSize: '8px', color: selectedMember ? '#4a90d9' : '#c0c4d0', lineHeight: 1, userSelect: 'none' }}>Pembeli</span>
+                </button>
+                {/* Kredit slider toggle — only active when a member is selected */}
+                <div
+                  role="switch"
+                  aria-checked={debtMode}
+                  aria-disabled={!selectedMember}
+                  aria-label="Kredit"
+                  onClick={() => { if (selectedMember) setDebtMode(m => !m); }}
+                  style={{ cursor: selectedMember ? 'pointer' : 'default', padding: '4px 6px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, userSelect: 'none', opacity: selectedMember ? 1 : 0.35, transition: 'opacity 0.15s' }}
+                >
+                  <div style={{ width: 30, height: 17, borderRadius: 9, background: '#eef0f5', boxShadow: 'inset 2px 2px 4px #c8cad1, inset -2px -2px 4px #ffffff', position: 'relative', flexShrink: 0 }}>
+                    <div style={{ position: 'absolute', top: 2, left: debtMode ? 13 : 2, width: 13, height: 13, borderRadius: '50%', background: debtMode ? '#d4a017' : '#c0c4d0', boxShadow: debtMode ? '0 1px 4px rgba(212,160,23,0.5)' : '1px 1px 2px rgba(0,0,0,0.18)', transition: 'left 0.18s, background 0.18s' }} />
+                  </div>
+                  <span style={{ fontSize: '8px', color: debtMode ? '#d4a017' : '#c0c4d0', lineHeight: 1, fontWeight: 600 }}>Kredit</span>
+                </div>
+              </div>
+            </div>
+            {selectedMember && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 5 }}>
+                <User size={9} color="#4a90d9" style={{ flexShrink: 0 }} />
+                <span style={{ fontSize: '10px', color: '#4a90d9', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{selectedMember.name}</span>
               </div>
             )}
-            {/* Cart total */}
-            <div style={{ marginTop: 'auto', paddingTop: 7, borderTop: '1px solid rgba(0,0,0,0.07)', flexShrink: 0 }}>
+          </div>
+
+          {/* Scrollable items area */}
+          <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' }}>
+            {payPhase === 'payment' ? (
+              /* Payment confirmation UI */
+              <div style={{ height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 10, animation: 'flash-in 200ms cubic-bezier(0.16, 1, 0.3, 1) both' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '10px', color: '#9a9db5', fontWeight: 600 }}>TOTAL</span>
+                  <span style={{ fontSize: '16px', fontWeight: 700, color: '#2d3142' }}>{formatRupiah(Math.max(0, (payStash?.items.reduce((s,i)=>s+i.total,0)??0) - (payStash?.discount??0)))}</span>
+                </div>
+                {!payIsDebt && (
+                  <>
+                    <div style={{ position: 'relative' }}>
+                      <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', fontSize: '11px', color: '#9a9db5', fontWeight: 600, pointerEvents: 'none' }}>Rp</span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        placeholder="Uang diterima..."
+                        value={cashInput ? Number(cashInput).toLocaleString('id-ID') : ''}
+                        onChange={e => setCashInput(e.target.value.replace(/\D/g, ''))}
+                        style={{ width: '100%', boxSizing: 'border-box', background: '#eef0f5', boxShadow: 'inset 2px 2px 5px #c8cad1, inset -2px -2px 5px #ffffff', borderRadius: 10, border: 'none', outline: 'none', padding: '8px 10px 8px 30px', fontSize: '13px', color: '#2d3142', fontFamily: 'inherit' }}
+                      />
+                    </div>
+                    {(() => {
+                      const total = Math.max(0, (payStash?.items.reduce((s,i)=>s+i.total,0)??0) - (payStash?.discount??0));
+                      const cash = Number(cashInput) || 0;
+                      if (cash > total) return (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: '10px', color: '#52b96a', fontWeight: 600 }}>KEMBALIAN</span>
+                          <span style={{ fontSize: '14px', fontWeight: 700, color: '#52b96a' }}>{formatRupiah(cash - total)}</span>
+                        </div>
+                      );
+                      return null;
+                    })()}
+                  </>
+                )}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <button
+                    onClick={() => setPayIsDebt(d => !d)}
+                    style={{ flex: 1, height: 32, borderRadius: 9, border: 'none', cursor: 'pointer', background: payIsDebt ? '#d4a017' : '#eef0f5', boxShadow: payIsDebt ? '0 2px 6px rgba(212,160,23,0.35)' : 'inset 2px 2px 5px #c8cad1, inset -2px -2px 5px #ffffff', color: payIsDebt ? '#fff' : '#d4a017', fontSize: '11px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, transition: 'all 0.15s' }}
+                  >
+                    <CreditCard size={12} />
+                    Belum Lunas
+                  </button>
+                  <button
+                    onClick={handlePayUndo}
+                    style={{ height: 32, padding: '0 12px', borderRadius: 9, border: 'none', cursor: 'pointer', background: '#eef0f5', boxShadow: 'inset 2px 2px 5px #c8cad1, inset -2px -2px 5px #ffffff', color: '#9a9db5', fontSize: '11px', fontWeight: 600 }}
+                  >
+                    Batalkan
+                  </button>
+                  <button
+                    onClick={() => handlePayConfirm()}
+                    style={{ height: 32, padding: '0 12px', borderRadius: 9, border: 'none', cursor: 'pointer', background: '#52b96a', boxShadow: '3px 3px 8px rgba(0,0,0,0.14), -2px -2px 6px rgba(255,255,255,0.5)', color: '#fff', fontSize: '11px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}
+                  >
+                    <Check size={12} /> Konfirmasi
+                  </button>
+                </div>
+              </div>
+            ) : payPhase === 'success' ? (
+              <div role="alert" style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, animation: 'flash-in 200ms cubic-bezier(0.16, 1, 0.3, 1) both' }}>
+                <div style={{ width: 22, height: 22, borderRadius: '50%', background: '#52b96a', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <Check size={13} color="#fff" strokeWidth={3} />
+                </div>
+                <span style={{ fontSize: '13px', fontWeight: 700, color: '#52b96a' }}>Transaksi Berhasil!</span>
+              </div>
+            ) : items.length === 0 ? (
+              <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <span style={{ fontSize: '11px', color: '#c0c4d0' }}>Pilih produk & masukkan jumlah</span>
+              </div>
+            ) : (
+              <>
+                <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                  {items.map(item => (
+                    <li key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 5, animation: 'cart-item-in 160ms cubic-bezier(0.16, 1, 0.3, 1) both' }}>
+                      <div style={{ width: 6, height: 6, borderRadius: '50%', background: item.color, flexShrink: 0 }} />
+                      <span style={{ fontSize: '11px', fontWeight: 600, color: '#2d3142', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
+                        {item.productShortName}{item.plasticSize ? ` ${item.plasticSize}` : ''}
+                      </span>
+                      <span style={{ fontSize: '10px', color: '#9a9db5' }}>
+                        {item.quantity % 1 === 0 ? item.quantity : item.quantity.toFixed(1)} {item.unit}
+                      </span>
+                      <span style={{ fontSize: '11px', fontWeight: 700, color: '#4a4e69', minWidth: 72, textAlign: 'right' }}>
+                        {formatRupiah(item.total)}
+                      </span>
+                      <button
+                        aria-label={`Hapus ${item.productShortName}`}
+                        onClick={() => removeItem(item.id)}
+                        onPointerDown={() => setPressedRemove(item.id)}
+                        onPointerUp={() => setPressedRemove(null)}
+                        onPointerLeave={() => setPressedRemove(null)}
+                        style={{ background: 'transparent', border: 'none', color: '#d4183d', cursor: 'pointer', padding: '16px 8px' }}
+                      >
+                        <X size={11} style={{ transform: pressedRemove === item.id ? 'scale(0.72)' : 'scale(1)', transition: 'transform 0.08s cubic-bezier(0.16, 1, 0.3, 1)' }} />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                {remarks && (
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 5, marginTop: 4, marginBottom: 4, paddingTop: 5, borderTop: '1px solid rgba(0,0,0,0.05)' }}>
+                    <MessageSquare size={10} color="#9a9db5" style={{ marginTop: 1, flexShrink: 0 }} />
+                    <span style={{ fontSize: '10px', color: '#9a9db5', fontStyle: 'italic', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const, flex: 1, minWidth: 0 }}>{remarks}</span>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* Locked footer — totals (only during normal cart view) */}
+          {items.length > 0 && payPhase === 'idle' && (
+            <div style={{ flexShrink: 0, paddingTop: 7, borderTop: '1px solid rgba(0,0,0,0.07)' }}>
               {appliedDiscount > 0 && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
                   <span style={{ fontSize: '9px', color: '#d4183d', letterSpacing: '0.08em', fontWeight: 600 }}>DISKON</span>
@@ -452,12 +535,8 @@ export default function HomeScreen() {
                 <span style={{ fontSize: '14px', fontWeight: 700, color: '#2d3142' }}>{formatRupiah(transactionTotal)}</span>
               </div>
             </div>
-          </>
-        )}
-      </div>
-      {items.length > 3 && (
-        <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 28, background: 'linear-gradient(to bottom, transparent, #eef0f5)', pointerEvents: 'none', borderRadius: '0 0 14px 14px' }} />
-      )}
+          )}
+        </div>
       </div>
 
       {/* BOTTOM ZONE */}
@@ -466,7 +545,7 @@ export default function HomeScreen() {
         {/* Calculator display */}
         <div style={{
           background: '#1a1d2e', borderRadius: '16px',
-          padding: '10px 16px 12px',
+          padding: compact ? '8px 12px 10px' : '10px 16px 12px',
           boxShadow: 'inset 5px 5px 12px #0d0f1a, inset -3px -3px 8px #2a2f48',
           position: 'relative', overflow: 'hidden',
         }}>
@@ -553,9 +632,6 @@ export default function HomeScreen() {
                 return (
                   <button onClick={handleEceranClick} style={neuBtn('#9b6dff', eActive)}>
                     <span style={{ fontSize: '12px', fontWeight: 700, color: eActive ? '#fff' : '#9b6dff' }}>E</span>
-                    <span style={{ fontSize: '8px', color: eActive ? 'rgba(255,255,255,0.75)' : '#9a9db5', whiteSpace: 'nowrap' }}>
-                      {formatRupiah(eceranPrice).replace('Rp ', '')}
-                    </span>
                   </button>
                 );
               })()}
@@ -566,9 +642,6 @@ export default function HomeScreen() {
                 return (
                   <button key={p.id} onClick={() => handleSoybeanClick(p.id)} style={neuBtn(btnColor, isActive)}>
                     <span style={{ fontSize: '12px', fontWeight: 700, color: isActive ? '#fff' : p.color }}>{p.name}</span>
-                    <span style={{ fontSize: '8px', color: isActive ? 'rgba(255,255,255,0.75)' : '#9a9db5', whiteSpace: 'nowrap' }}>
-                      {formatRupiah(p.price).replace('Rp ', '')}
-                    </span>
                   </button>
                 );
               })}
@@ -582,16 +655,12 @@ export default function HomeScreen() {
                 style={neuBtn(PLASTIC_COLOR, step.type === 'plastic_size' || (step.type === 'quantity' && step.productId === 'plastic'))}
               >
                 <span style={{ fontSize: '12px', fontWeight: 700, color: (step.type === 'plastic_size' || (step.type === 'quantity' && step.productId === 'plastic')) ? '#fff' : PLASTIC_COLOR }}>P</span>
-                <span style={{ fontSize: '8px', color: (step.type === 'plastic_size' || (step.type === 'quantity' && step.productId === 'plastic')) ? 'rgba(255,255,255,0.75)' : '#9a9db5' }}>Plastik</span>
               </button>
               {otherProducts.map(p => {
                 const isActive = step.type === 'quantity' && step.productId === p.id;
                 return (
                   <button key={p.id} onClick={() => handleOtherClick(p.id)} style={neuBtn(p.color, isActive)}>
                     <span style={{ fontSize: '12px', fontWeight: 700, color: isActive ? '#fff' : p.color }}>{p.name}</span>
-                    <span style={{ fontSize: '8px', color: isActive ? 'rgba(255,255,255,0.75)' : '#9a9db5' }}>
-                      {formatRupiah(p.price).replace('Rp ', '')}
-                    </span>
                   </button>
                 );
               })}
@@ -620,7 +689,7 @@ export default function HomeScreen() {
           onAddItem={handleAddItem}
           onComplete={handleComplete}
           canAdd={!discountMode && step.type === 'quantity' && parseFloat(inputValue) > 0}
-          canComplete={items.length > 0}
+          canComplete={items.length > 0 && payPhase === 'idle'}
           allowDecimal={discountMode ? false : (step.type !== 'quantity' || step.unit !== 'pcs')}
           maxValue={discountMode ? undefined : (step.type === 'quantity' && step.isEceran ? 10 : undefined)}
         />

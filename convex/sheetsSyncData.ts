@@ -134,3 +134,28 @@ export const getMembersForSync = internalQuery({
       }));
   },
 });
+
+export const getPaymentsForSync = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const payments = await ctx.db.query("payments").collect();
+    payments.sort((a, b) => a.timestamp - b.timestamp);
+
+    return Promise.all(payments.map(async (p) => {
+      const tx = await ctx.db.get(p.transactionId);
+      let memberName = "";
+      if (tx?.memberId) {
+        const member = await ctx.db.get(tx.memberId);
+        memberName = member?.name ?? "";
+      }
+      return {
+        orderNumber: tx?.orderNumber ?? 0,
+        txDate: tx?.date ?? "",
+        memberName,
+        txTotal: tx?.totalAmount ?? 0,
+        paymentDate: p.date,
+        amount: p.amount,
+      };
+    }));
+  },
+});

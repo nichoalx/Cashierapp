@@ -8,6 +8,8 @@ import TransactionLogScreen from './pages/TransactionLogScreen';
 import StockScreen from './pages/StockScreen';
 import UserScreen from './pages/UserScreen';
 import MembersScreen from './pages/MembersScreen';
+import MemberDetailScreen from './pages/MemberDetailScreen';
+import OrderDetailScreen from './pages/OrderDetailScreen';
 import WelcomeScreen from './pages/WelcomeScreen';
 import LoginScreen from './pages/LoginScreen';
 import AppErrorScreen from './pages/AppErrorScreen';
@@ -101,7 +103,9 @@ export const router = createBrowserRouter([
           { path: 'log', Component: TransactionLogScreen },
           { path: 'stock', Component: StockScreen },
           { path: 'profile', Component: UserScreen },
-          { path: 'members', Component: MembersScreen }
+          { path: 'members', Component: MembersScreen },
+          { path: 'members/:memberId', Component: MemberDetailScreen },
+          { path: 'order/:txId', Component: OrderDetailScreen },
         ],
       },
     ],

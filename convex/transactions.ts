@@ -14,6 +14,7 @@ export const create = mutation({
     remarks: v.optional(v.string()),
     memberId: v.optional(v.id("members")),
     discount: v.optional(v.number()),
+    amountPaid: v.optional(v.number()), // absent = fully paid; 0 = debt/unpaid
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
@@ -32,12 +33,18 @@ export const create = mutation({
     const discount = Math.max(0, Math.min(args.discount ?? 0, subtotal));
     const totalAmount = subtotal - discount;
 
+    // Only persist amountPaid when explicitly less than full (avoids polluting old rows)
+    const amountPaid = args.amountPaid !== undefined && args.amountPaid < totalAmount
+      ? args.amountPaid
+      : undefined;
+
     const txId = await ctx.db.insert("transactions", {
       orderNumber,
       date,
       timestamp: now,
       totalAmount,
       discount: discount > 0 ? discount : undefined,
+      amountPaid,
       remarks: args.remarks,
       memberId: args.memberId,
     });
@@ -118,18 +125,96 @@ export const listByDate = query({
         memberName = member?.name;
       }
 
+      // Compute remaining balance (initial payment + recorded payments)
+      const paymentRows = await ctx.db
+        .query("payments")
+        .withIndex("by_transactionId", q => q.eq("transactionId", tx._id))
+        .collect();
+      const recordedPayments = paymentRows.reduce((s, p) => s + p.amount, 0);
+      const initialPaid = tx.amountPaid ?? tx.totalAmount;
+      const balance = Math.max(0, tx.totalAmount - initialPaid - recordedPayments);
+
       return {
         id: tx._id,
         orderNumber: tx.orderNumber,
         timestamp: tx.timestamp,
         total: tx.totalAmount,
         discount: tx.discount ?? 0,
+        amountPaid: tx.amountPaid ?? tx.totalAmount,
+        balance,
         remarks: tx.remarks,
         memberId: tx.memberId,
         memberName,
         items,
       };
     }));
+  },
+});
+
+export const getDetail = query({
+  args: { txId: v.id("transactions") },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return null;
+
+    const tx = await ctx.db.get(args.txId);
+    if (!tx) return null;
+
+    const rawItems = await ctx.db
+      .query("transactionItems")
+      .withIndex("by_transactionId", q => q.eq("transactionId", tx._id))
+      .collect();
+
+    const items = await Promise.all(rawItems.map(async (item) => {
+      const product = await ctx.db.get(item.productId);
+      const variant = item.variantId ? await ctx.db.get(item.variantId) : null;
+      return {
+        id: item._id,
+        productName: variant
+          ? `${product?.fullName ?? '?'} ${variant.variantValue}`
+          : (product?.fullName ?? '?'),
+        productShortName: product?.name ?? '?',
+        quantity: item.quantity,
+        unit: product?.unit ?? 'pcs',
+        unitPrice: item.unitPrice,
+        total: item.totalAmount,
+        color: product?.color ?? '#9a9db5',
+      };
+    }));
+
+    const paymentRows = await ctx.db
+      .query("payments")
+      .withIndex("by_transactionId", q => q.eq("transactionId", tx._id))
+      .collect();
+    const payments = paymentRows
+      .sort((a, b) => a.timestamp - b.timestamp)
+      .map(p => ({ id: p._id, date: p.date, amount: p.amount }));
+
+    let memberName: string | undefined;
+    if (tx.memberId) {
+      const member = await ctx.db.get(tx.memberId);
+      memberName = member?.name;
+    }
+
+    const initialPaid = tx.amountPaid ?? tx.totalAmount;
+    const recordedPayments = payments.reduce((s, p) => s + p.amount, 0);
+    const balance = Math.max(0, tx.totalAmount - initialPaid - recordedPayments);
+
+    return {
+      id: tx._id,
+      orderNumber: tx.orderNumber,
+      date: tx.date,
+      timestamp: tx.timestamp,
+      total: tx.totalAmount,
+      discount: tx.discount ?? 0,
+      amountPaid: initialPaid,
+      balance,
+      remarks: tx.remarks,
+      memberId: tx.memberId,
+      memberName,
+      items,
+      payments,
+    };
   },
 });
 
