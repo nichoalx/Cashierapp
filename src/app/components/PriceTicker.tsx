@@ -21,7 +21,7 @@ export function PriceTicker({ onOpenPriceEditor }: PriceTickerProps) {
       .map(p => ({ label: p.name, price: `${formatRupiah(p.price)}/pcs`, color: p.color })),
     ...rawProducts
       .filter(p => p.variants.length > 0)
-      .flatMap(p => p.variants.map(v => ({ label: `P ${v.variantValue}`, price: `${formatRupiah(v.price)}/pcs`, color: p.color }))),
+      .map(p => ({ label: p.name, price: `${formatRupiah(p.variants[0]?.price ?? 0)}/pcs`, color: p.color })),
   ];
 
   const content = [...items, ...items];

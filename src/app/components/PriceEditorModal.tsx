@@ -414,7 +414,12 @@ export function PriceEditorModal({ onClose }: Props) {
                           <div style={{ animation: 'form-expand 200ms cubic-bezier(0.16, 1, 0.3, 1) both', marginTop: 8 }}>
                             {plasticProduct.variants.length > 0 && (
                               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-                                {plasticProduct.variants.map(ps => (
+                                {[...plasticProduct.variants].sort((a, b) => {
+                                  const parse = (s: string) => s.split(/[×x]/).map(Number);
+                                  const [a1, a2] = parse(a.variantValue);
+                                  const [b1, b2] = parse(b.variantValue);
+                                  return a1 !== b1 ? a1 - b1 : a2 - b2;
+                                }).map(ps => (
                                   <div key={ps._id} style={{
                                     display: 'flex', alignItems: 'center', gap: 4,
                                     background: '#eef0f5', boxShadow: SHD_RAISED_STD,
@@ -439,6 +444,10 @@ export function PriceEditorModal({ onClose }: Props) {
                               <button
                                 onClick={() => {
                                   if (newPlasticSize && plasticProduct) {
+                                    const isDuplicate = plasticProduct.variants.some(
+                                      v => v.variantValue.toLowerCase() === newPlasticSize.toLowerCase()
+                                    );
+                                    if (isDuplicate) return;
                                     createVariant({ productId: plasticProduct._id as Id<'products'>, variantValue: newPlasticSize, price: plasticDisplayPrice }).catch(console.error);
                                     closeSizeForm();
                                   }
