@@ -2,22 +2,27 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../AuthContext';
 
-// Commodity palette — connects the splash to the product's data vocabulary
+const STORAGE_KEY = 'ama_welcome_date';
+
+function todayJakarta() {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' });
+}
+
 const ORBS: Array<{
   w: number; h: number; color: string;
   top?: string; bottom?: string; left?: string; right?: string;
 }> = [
-  { w: 340, h: 340, top: '-110px',  left: '-90px',  color: '#9b6dff' },
-  { w: 280, h: 280, top: '-60px',   right: '-80px', color: '#4a90d9' },
-  { w: 220, h: 220, bottom: '8%',   right: '-50px', color: '#e05a6a' },
-  { w: 200, h: 200, bottom: '-60px',left: '0%',     color: '#38b2ac' },
+  { w: 340, h: 340, top: '-110px',   left: '-90px',  color: '#9b6dff' },
+  { w: 280, h: 280, top: '-60px',    right: '-80px', color: '#4a90d9' },
+  { w: 220, h: 220, bottom: '8%',    right: '-50px', color: '#e05a6a' },
+  { w: 200, h: 200, bottom: '-60px', left: '0%',     color: '#38b2ac' },
 ];
 
 export default function WelcomeScreen() {
   const navigate = useNavigate();
   const { user, isLoading } = useAuth();
-  const [visible, setVisible] = useState(false);
-  const [exiting, setExiting] = useState(false);
+  const [visible, setVisible]   = useState(false);
+  const [exiting, setExiting]   = useState(false);
 
   useEffect(() => {
     const t = setTimeout(() => setVisible(true), 60);
@@ -28,12 +33,18 @@ export default function WelcomeScreen() {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Enter') handleTap(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [exiting, isLoading]);
 
   const handleTap = () => {
     if (exiting || isLoading) return;
     setExiting(true);
-    setTimeout(() => navigate(user ? '/' : '/login', { replace: true }), 380);
+    if (!user) {
+      setTimeout(() => navigate('/login', { replace: true }), 650);
+      return;
+    }
+    const isNewDay = localStorage.getItem(STORAGE_KEY) !== todayJakarta();
+    setTimeout(() => navigate(isNewDay ? '/morning' : '/', { replace: true }), 650);
   };
 
   return (
@@ -47,10 +58,10 @@ export default function WelcomeScreen() {
         position: 'relative', overflow: 'hidden',
         cursor: 'pointer',
         opacity: exiting ? 0 : 1,
-        transition: 'opacity 0.38s ease',
+        transform: exiting ? 'scale(0.96)' : 'scale(1)',
+        transition: 'opacity 0.65s cubic-bezier(0.16, 1, 0.3, 1), transform 0.65s cubic-bezier(0.16, 1, 0.3, 1)',
       }}
     >
-      {/* Static orbs */}
       {ORBS.map((o, i) => (
         <div key={i} style={{
           position: 'absolute',
@@ -65,14 +76,12 @@ export default function WelcomeScreen() {
         }} />
       ))}
 
-      {/* Main content */}
       <div style={{
         display: 'flex', flexDirection: 'column', alignItems: 'center',
         opacity: visible ? 1 : 0,
         transition: 'opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.08s',
         zIndex: 1, textAlign: 'center', padding: '0 40px',
       }}>
-        {/* Subtitle */}
         <div style={{
           fontFamily: 'var(--font-ui)',
           fontSize: '9px', fontWeight: 500,
@@ -84,7 +93,6 @@ export default function WelcomeScreen() {
           Trading Operations
         </div>
 
-        {/* Title */}
         <h1 style={{
           margin: 0, padding: 0,
           fontFamily: 'var(--font-display)',
@@ -95,7 +103,6 @@ export default function WelcomeScreen() {
           Agro Muda Anugerah
         </h1>
 
-        {/* Version pill */}
         <div style={{
           marginTop: 20,
           display: 'inline-flex', alignItems: 'center',
@@ -114,7 +121,6 @@ export default function WelcomeScreen() {
         </div>
       </div>
 
-      {/* Tap to continue */}
       <div style={{
         position: 'absolute', bottom: 44,
         display: 'flex', alignItems: 'center',
@@ -133,7 +139,6 @@ export default function WelcomeScreen() {
         </span>
       </div>
 
-      {/* Copyright */}
       <div style={{
         position: 'absolute', bottom: 14, zIndex: 1,
         opacity: visible ? 0.2 : 0,

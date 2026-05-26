@@ -288,6 +288,20 @@ function AddStockModal({
   const [amount, setAmount]         = useState('');
   const [addPressed, setAddPressed] = useState(false);
 
+  const nonPlasticItems = stockItems.filter(s => !s.variantId);
+  const plasticItems    = stockItems
+    .filter(s => !!s.variantId)
+    .sort((a, b) => {
+      const parse = (name: string) => {
+        const m = name.replace(/^Plastik\s*/i, '').match(/(\d+)[×xX](\d+)/);
+        return m ? [parseInt(m[1]), parseInt(m[2])] : [0, 0];
+      };
+      const [a1, a2] = parse(a.productName);
+      const [b1, b2] = parse(b.productName);
+      return a1 !== b1 ? a1 - b1 : a2 - b2;
+    });
+  const selectedIsPlastic = selectedId ? !!stockItems.find(s => s.id === selectedId)?.variantId : false;
+
   const selectedItem    = stockItems.find(s => s.id === selectedId);
   const parsedAmount    = parseFloat(amount);
   const canAdd          = !!(selectedId && amount && parsedAmount > 0);
@@ -337,19 +351,48 @@ function AddStockModal({
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div>
             <div style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5', marginBottom: 8, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Pilih Produk</div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
-              {stockItems.map(s => (
-                <button key={s.id} onClick={() => setSelectedId(s.id)} style={{
-                  padding: '7px 13px', borderRadius: '10px', border: 'none', cursor: 'pointer',
-                  background: '#eef0f5',
-                  boxShadow: selectedId === s.id ? SHD_RECESSED : SHD_RAISED_STD,
-                  fontSize: '12px', fontWeight: 600,
-                  color: selectedId === s.id ? '#2d3142' : '#9a9db5',
-                  transition: 'box-shadow 0.12s',
-                }}>
-                  {s.productName}
-                </button>
-              ))}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
+                {nonPlasticItems.map(s => (
+                  <button key={s.id} onClick={() => setSelectedId(s.id)} style={{
+                    padding: '7px 13px', borderRadius: '10px', border: 'none', cursor: 'pointer',
+                    background: '#eef0f5',
+                    boxShadow: selectedId === s.id ? SHD_RECESSED : SHD_RAISED_STD,
+                    fontSize: '12px', fontWeight: 600,
+                    color: selectedId === s.id ? '#2d3142' : '#9a9db5',
+                    transition: 'box-shadow 0.12s',
+                  }}>
+                    {s.productName}
+                  </button>
+                ))}
+              </div>
+              {plasticItems.length > 0 && (
+                <div style={{ position: 'relative' }}>
+                  <select
+                    value={selectedIsPlastic ? String(selectedId) : ''}
+                    onChange={e => setSelectedId(e.target.value ? e.target.value as Id<'stock'> : '')}
+                    style={{
+                      width: '100%', appearance: 'none', WebkitAppearance: 'none',
+                      background: '#eef0f5',
+                      boxShadow: selectedIsPlastic ? SHD_RECESSED : SHD_RAISED_STD,
+                      borderRadius: '10px', border: 'none', outline: 'none',
+                      padding: '9px 36px 9px 13px',
+                      fontSize: '12px', fontWeight: 600,
+                      color: selectedIsPlastic ? '#2d3142' : '#9a9db5',
+                      cursor: 'pointer', transition: 'box-shadow 0.12s',
+                    }}
+                  >
+                    <option value="">Plastik ···</option>
+                    {plasticItems.map(s => (
+                      <option key={s.id} value={String(s.id)}>
+                        {s.productName.replace(/^Plastik\s+/i, '')}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown size={14} color={selectedIsPlastic ? '#2d3142' : '#9a9db5'}
+                    style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+                </div>
+              )}
             </div>
           </div>
 

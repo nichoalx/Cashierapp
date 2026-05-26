@@ -5,8 +5,6 @@ import { api } from '../../../convex/_generated/api';
 import { Id } from '../../../convex/_generated/dataModel';
 import { useAppStore, formatRupiah, TransactionItem } from '../store';
 import { useCompact } from '../hooks/useCompact';
-import { PriceTicker } from '../components/PriceTicker';
-import { PriceEditorModal } from '../components/PriceEditorModal';
 import { Numpad } from '../components/Numpad';
 import { MemberPickerModal } from '../components/MemberPickerModal';
 
@@ -134,7 +132,6 @@ export default function HomeScreen() {
   const setSelectedMember = setCartMember;
   const [step, setStep] = useState<Step>({ type: 'idle' });
   const [inputValue, setInputValue] = useState('0');
-  const [showPriceEditor, setShowPriceEditor] = useState(false);
   const [showRemarksModal, setShowRemarksModal] = useState(false);
   const [showMemberPicker, setShowMemberPicker] = useState(false);
   const [pressedIcon, setPressedIcon] = useState<string | null>(null);
@@ -313,7 +310,7 @@ export default function HomeScreen() {
     borderRadius: '11px',
     border: 'none',
     cursor: 'pointer',
-    padding: compact ? '5px 6px' : '7px 8px',
+    padding: compact ? '12px 8px' : '15px 10px',
     display: 'flex',
     flexDirection: 'column' as const,
     alignItems: 'center',
@@ -326,7 +323,6 @@ export default function HomeScreen() {
 
   return (
     <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: `${compact ? 10 : 14}px var(--app-page-gutter) var(--app-content-bottom)`, gap: compact ? 8 : 12 }}>
-      {showPriceEditor && <PriceEditorModal onClose={() => setShowPriceEditor(false)} />}
       {showRemarksModal && (
         <RemarksModal
           value={remarks}
@@ -341,11 +337,6 @@ export default function HomeScreen() {
           onClose={() => setShowMemberPicker(false)}
         />
       )}
-
-      {/* TOP ZONE */}
-      <div style={{ flexShrink: 0 }}>
-        <PriceTicker onOpenPriceEditor={() => setShowPriceEditor(true)} />
-      </div>
 
       {/* Keranjang */}
       <div style={{ flex: '1 1 auto', minHeight: 80 }}>
@@ -696,6 +687,7 @@ export default function HomeScreen() {
           canComplete={items.length > 0 && payPhase === 'idle'}
           allowDecimal={discountMode ? false : (step.type !== 'quantity' || step.unit !== 'pcs')}
           maxValue={discountMode ? undefined : (step.type === 'quantity' && step.isEceran ? 10 : undefined)}
+          digitsDisabled={!discountMode && step.type !== 'quantity'}
         />
       </div>
 

@@ -17,6 +17,7 @@ import type * as seed from "../seed.js";
 import type * as sheetsSync from "../sheetsSync.js";
 import type * as sheetsSyncData from "../sheetsSyncData.js";
 import type * as stock from "../stock.js";
+import type * as stockReconcile from "../stockReconcile.js";
 import type * as transactions from "../transactions.js";
 import type * as users from "../users.js";
 
@@ -36,6 +37,7 @@ declare const fullApi: ApiFromModules<{
   sheetsSync: typeof sheetsSync;
   sheetsSyncData: typeof sheetsSyncData;
   stock: typeof stock;
+  stockReconcile: typeof stockReconcile;
   transactions: typeof transactions;
   users: typeof users;
 }>;

@@ -207,7 +207,7 @@ export default function MembersScreen() {
   const [savePressed, setSavePressed] = useState(false);
   const [dupWarn, setDupWarn] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<{ id: Id<'members'>; name: string } | null>(null);
-  const [sortOrder, setSortOrder] = useState<'az' | 'newest'>('az');
+  const [sortOrder, setSortOrder] = useState<'az' | 'newest' | 'hutang'>('az');
   const [editingMember, setEditingMember] = useState<Member | null>(null);
   const [actionsOpen, setActionsOpen] = useState<Id<'members'> | null>(null);
 
@@ -231,9 +231,10 @@ export default function MembersScreen() {
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Detect newly added member: apply highlight and scroll it into view
+  // Detect newly added member: apply highlight and scroll it into view.
+  // Guard prevMembersLength.current > 0 so the initial data load (0 → N) is ignored.
   useEffect(() => {
-    if (members.length > prevMembersLength.current) {
+    if (prevMembersLength.current > 0 && members.length > prevMembersLength.current) {
       const newMember = members[members.length - 1];
       setRecentlyAddedId(newMember.id);
       const t = setTimeout(() => setRecentlyAddedId(null), 1800);
@@ -269,6 +270,8 @@ export default function MembersScreen() {
       : members;
     const sorted = sortOrder === 'az'
       ? [...base].sort((a, b) => a.name.localeCompare(b.name, 'id', { sensitivity: 'base' }))
+      : sortOrder === 'hutang'
+      ? [...base].sort((a, b) => b.outstanding - a.outstanding || a.name.localeCompare(b.name, 'id', { sensitivity: 'base' }))
       : [...base].reverse();
     if (!search.trim()) return sorted;
     const q = search.toLowerCase();
@@ -549,22 +552,22 @@ export default function MembersScreen() {
             : `${effectiveTotal} anggota`}
         </span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          {(['az', 'newest'] as const).map((mode, i) => (
-            <React.Fragment key={mode}>
+          {(['az', 'newest', 'hutang'] as const).map((s, i) => (
+            <React.Fragment key={s}>
               {i > 0 && <span style={{ fontSize: '11px', color: '#c0c4d0', userSelect: 'none' }}>·</span>}
               <button
-                onClick={() => setSortOrder(mode)}
-                aria-pressed={sortOrder === mode}
+                onClick={() => setSortOrder(s)}
+                aria-pressed={sortOrder === s}
                 style={{
                   fontSize: '11px',
-                  fontWeight: sortOrder === mode ? 700 : 400,
-                  color: sortOrder === mode ? '#4a4e69' : '#c0c4d0',
+                  fontWeight: sortOrder === s ? 700 : 400,
+                  color: sortOrder === s ? (s === 'hutang' ? '#d4a017' : '#4a4e69') : '#c0c4d0',
                   background: 'none', border: 'none', cursor: 'pointer',
                   padding: '14px 8px', lineHeight: 1,
                   transition: 'color 0.15s',
                 }}
               >
-                {mode === 'az' ? 'A-Z' : 'Terbaru'}
+                {s === 'az' ? 'A-Z' : s === 'newest' ? 'Terbaru' : 'Hutang'}
               </button>
             </React.Fragment>
           ))}

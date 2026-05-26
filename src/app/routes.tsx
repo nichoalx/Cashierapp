@@ -11,6 +11,7 @@ import MembersScreen from './pages/MembersScreen';
 import MemberDetailScreen from './pages/MemberDetailScreen';
 import OrderDetailScreen from './pages/OrderDetailScreen';
 import WelcomeScreen from './pages/WelcomeScreen';
+import GoodMorningScreen from './pages/GoodMorningScreen';
 import LoginScreen from './pages/LoginScreen';
 import AppErrorScreen from './pages/AppErrorScreen';
 
@@ -22,13 +23,13 @@ function ProtectedRoot() {
   return (
     <MotionConfig reducedMotion="user">
       <div style={{ flex: 1, minHeight: 0, position: 'relative', background: '#eef0f5', overflow: 'hidden', overscrollBehavior: 'none' }}>
-        <AnimatePresence mode="sync" initial={false}>
+        <AnimatePresence mode="sync" initial={true}>
           <motion.div
             key={location.pathname}
-            initial={{ opacity: 0, y: 5 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
+            initial={{ opacity: 0, scale: 0.97, y: 10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 1.01 }}
+            transition={{ duration: 0.55, ease: [0.16, 1, 0.3, 1] }}
             style={{
               position: 'absolute',
               inset: 0,
@@ -93,8 +94,9 @@ export const router = createBrowserRouter([
     Component: AppShell,
     ErrorBoundary: AppErrorScreen,
     children: [
-      { path: '/splash', Component: WelcomeScreen },
-      { path: '/login', Component: LoginScreen },
+      { path: '/splash',   Component: WelcomeScreen },
+      { path: '/morning',  Component: GoodMorningScreen },
+      { path: '/login',    Component: LoginScreen },
       {
         path: '/',
         Component: ProtectedRoot,

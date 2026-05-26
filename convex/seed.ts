@@ -43,7 +43,7 @@ export const seedProducts = internalMutation({
         productId: plasticId, variantType: "size", variantValue: size,
       });
       await ctx.db.insert("prices", { productId: plasticId, variantId, price, updatedAt: now });
-      await ctx.db.insert("stock", { productId: plasticId, variantId, quantity: 0, minThreshold: 200 });
+      await ctx.db.insert("stock", { productId: plasticId, variantId, quantity: 0, minThreshold: 100 });
     }
 
     return { status: "created" };
@@ -131,7 +131,7 @@ export const reseedPlasticVariants = internalMutation({
         productId: plastic._id,
         variantId,
         quantity: 0,
-        minThreshold: 200,
+        minThreshold: 100,
       });
     }
 
@@ -204,12 +204,33 @@ export const restoreStock = internalMutation({
         productId: variant.productId,
         variantId: variant._id,
         quantity: snap?.quantity ?? 0,
-        minThreshold: 200,
+        minThreshold: 100,
       });
       created++;
     }
 
     return { status: "ok", created, restoredFromSnapshots: latestByKey.size > 0 };
+  },
+});
+
+export const setPlasticThresholds = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const plastic = await ctx.db
+      .query("products")
+      .withIndex("by_name", q => q.eq("name", "P"))
+      .first();
+    if (!plastic) return { updated: 0 };
+
+    const plasticStock = await ctx.db
+      .query("stock")
+      .withIndex("by_productId", q => q.eq("productId", plastic._id))
+      .collect();
+
+    for (const row of plasticStock) {
+      await ctx.db.patch(row._id, { minThreshold: 100 });
+    }
+    return { updated: plasticStock.length };
   },
 });
 

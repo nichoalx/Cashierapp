@@ -11,6 +11,7 @@ interface NumpadProps {
   canComplete: boolean;
   allowDecimal?: boolean;
   maxValue?: number;
+  digitsDisabled?: boolean;
 }
 
 function NumKey({ label, onClick, style, children, disabled, compact }: {
@@ -125,7 +126,7 @@ function ActionKey({ icon, onClick, color, disabled, style }: {
   );
 }
 
-export function Numpad({ value, onChange, onAddItem, onComplete, canAdd, canComplete, allowDecimal = true, maxValue }: NumpadProps) {
+export function Numpad({ value, onChange, onAddItem, onComplete, canAdd, canComplete, allowDecimal = true, maxValue, digitsDisabled = false }: NumpadProps) {
   const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const didHoldRef = useRef(false);
   const [zeroDotPressed, setZeroDotPressed] = useState(false);
@@ -151,13 +152,14 @@ export function Numpad({ value, onChange, onAddItem, onComplete, canAdd, canComp
   };
 
   const digitDisabled = (d: string) => {
+    if (digitsDisabled) return true;
     if (maxValue === undefined) return false;
     const next = value === '0' ? d : value + d;
     return parseFloat(next) > maxValue;
   };
 
-  const zeroDotDisabled = digitDisabled('0');
-  const dotDisabled = !allowDecimal || value.includes('.');
+  const zeroDotDisabled = digitsDisabled || digitDisabled('0');
+  const dotDisabled = digitsDisabled || !allowDecimal || value.includes('.');
 
   const handleZeroDotDown = () => {
     if (zeroDotDisabled) return;
@@ -218,7 +220,7 @@ export function Numpad({ value, onChange, onAddItem, onComplete, canAdd, canComp
           onPointerUp={handleZeroDotUp}
           onPointerLeave={handleZeroDotCancel}
           onPointerCancel={handleZeroDotCancel}
-          disabled={zeroDotDisabled}
+          disabled={zeroDotDisabled || digitsDisabled}
           style={{
             gridColumn: 'span 3',
             background: zeroDotPressed ? '#e0e3eb' : '#eef0f5',

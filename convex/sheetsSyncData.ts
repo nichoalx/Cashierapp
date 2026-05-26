@@ -6,16 +6,20 @@ import type { Doc, Id } from "./_generated/dataModel";
 // Lives outside `sheetsSync.ts` because that file uses the Node.js runtime,
 // which only permits action definitions — queries/mutations must be in V8-runtime files.
 
-/** Take a stock snapshot for today if one doesn't already exist. */
+/** Refresh the stock snapshot for today (always overwrites so the sheet stays current). */
 export const takeSnapshotIfMissing = internalMutation({
   args: {},
   handler: async (ctx) => {
-    const date = new Date().toISOString().slice(0, 10);
+    const date = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Jakarta" });
+
+    // Always delete and re-insert today's snapshot so the sheet reflects the latest stock
     const existing = await ctx.db
       .query("stockSnapshots")
       .withIndex("by_date", q => q.eq("date", date))
-      .first();
-    if (existing) return { created: false, date };
+      .collect();
+    for (const s of existing) {
+      await ctx.db.delete(s._id);
+    }
 
     const stockRows = await ctx.db.query("stock").collect();
     const now = Date.now();
@@ -117,7 +121,25 @@ export const getMonthData = internalQuery({
     }
     productInfo.sort((a, b) => a.sortKey.localeCompare(b.sortKey));
 
-    return { txDetails, snapshots, productInfo };
+    const allPayments = await ctx.db.query("payments").collect();
+    const monthPayments = allPayments
+      .filter(p => p.date.startsWith(monthPrefix))
+      .sort((a, b) => a.timestamp - b.timestamp);
+
+    const paymentDetails = await Promise.all(monthPayments.map(async (p) => {
+      const tx = await ctx.db.get(p.transactionId);
+      const member = tx?.memberId ? await ctx.db.get(tx.memberId) : null;
+      return {
+        orderNumber: tx?.orderNumber ?? 0,
+        txDate: tx?.date ?? "",
+        memberName: member?.name ?? "",
+        txTotal: tx?.totalAmount ?? 0,
+        paymentDate: p.date,
+        amount: p.amount,
+      };
+    }));
+
+    return { txDetails, snapshots, productInfo, paymentDetails };
   },
 });
 
