@@ -30,7 +30,7 @@ export default defineConfig({
         name: 'Kasir Kedelai',
         short_name: 'Kasir',
         description: 'Aplikasi kasir untuk perdagangan kedelai',
-        theme_color: '#9bebbd',
+        theme_color: '#eef0f5',
         background_color: '#eef0f5',
         display: 'standalone',
         orientation: 'portrait',
