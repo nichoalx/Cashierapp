@@ -275,9 +275,29 @@ export const remove = mutation({
       .query("transactionItems")
       .withIndex("by_transactionId", q => q.eq("transactionId", args.txId))
       .collect();
+
     for (const item of items) {
+      // Restore stock for each item
+      const stockEntry = item.variantId
+        ? await ctx.db
+            .query("stock")
+            .withIndex("by_variantId", q => q.eq("variantId", item.variantId!))
+            .first()
+        : await ctx.db
+            .query("stock")
+            .withIndex("by_productId", q => q.eq("productId", item.productId))
+            .filter(q => q.eq(q.field("variantId"), undefined))
+            .first();
+
+      if (stockEntry) {
+        await ctx.db.patch(stockEntry._id, {
+          quantity: stockEntry.quantity + item.quantity,
+        });
+      }
+
       await ctx.db.delete(item._id);
     }
+
     await ctx.db.delete(args.txId);
   },
 });
