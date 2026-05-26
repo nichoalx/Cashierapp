@@ -464,6 +464,8 @@ function StockCard({ s, maxQty }: { s: StockRow; maxQty: number }) {
 // ─────────── Plastic Group Card ───────────
 function PlasticGroupCard({ items }: { items: StockRow[] }) {
   const [expanded, setExpanded] = useState(false);
+  const [alertIdx, setAlertIdx] = useState(0);
+  const [flash, setFlash] = useState(true);
 
   const totalQty   = items.reduce((sum, s) => sum + s.quantity, 0);
   const color      = items[0]?.color ?? '#38b2ac';
@@ -475,6 +477,22 @@ function PlasticGroupCard({ items }: { items: StockRow[] }) {
 
   const statusColor = anyCritical ? '#d4183d' : anyLow ? '#d4a017' : '#52b96a';
   const statusLabel = anyCritical ? 'KRITIS'  : anyLow ? 'RENDAH'  : 'OK';
+
+  const alertItems = items.filter(s => s.quantity <= s.minThreshold * 3);
+  const currentAlert = alertItems.length > 0 ? alertItems[alertIdx % alertItems.length] : null;
+  const alertSize = currentAlert?.productName.replace(/^Plastik\s*/i, '') ?? '';
+
+  useEffect(() => {
+    if (alertItems.length <= 1) return;
+    const id = setInterval(() => {
+      setFlash(false);
+      setTimeout(() => {
+        setAlertIdx(i => i + 1);
+        setFlash(true);
+      }, 180);
+    }, 1800);
+    return () => clearInterval(id);
+  }, [alertItems.length]);
 
   return (
     <div style={{ background: '#eef0f5', boxShadow: SHD_RAISED_LIST, borderRadius: '14px', flexShrink: 0, overflow: 'hidden' }}>
@@ -502,9 +520,15 @@ function PlasticGroupCard({ items }: { items: StockRow[] }) {
               </div>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 2 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                <div style={{ width: 8, height: 8, borderRadius: '50%', background: statusColor, boxShadow: `0 0 5px ${statusColor}99` }} />
-                <span style={{ fontSize: '9px', color: statusColor, fontWeight: 700, letterSpacing: '0.05em' }}>{statusLabel}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5, overflow: 'hidden' }}>
+                <div style={{ width: 8, height: 8, borderRadius: '50%', background: statusColor, boxShadow: `0 0 5px ${statusColor}99`, flexShrink: 0 }} />
+                <span style={{
+                  fontSize: '9px', color: statusColor, fontWeight: 700, letterSpacing: '0.05em',
+                  opacity: flash ? 1 : 0, transition: 'opacity 0.18s ease',
+                  whiteSpace: 'nowrap',
+                }}>
+                  {currentAlert ? alertSize : statusLabel}
+                </span>
               </div>
               <span style={{ fontSize: '9px', color: '#c0c4d0' }}>{items.length} ukuran</span>
             </div>
@@ -515,7 +539,11 @@ function PlasticGroupCard({ items }: { items: StockRow[] }) {
 
       {expanded && (
         <div style={{ borderTop: '1px solid #e0e3ec', padding: '4px 14px 10px' }}>
-          {items.map((s, i) => {
+          {[...items].sort((a, b) => {
+            const p = (s: string) => s.replace(/^Plastik\s*/i, '').split(/[×x]/).map(Number);
+            const [a1, a2] = p(a.productName), [b1, b2] = p(b.productName);
+            return a1 !== b1 ? a1 - b1 : a2 - b2;
+          }).map((s, i) => {
             const sizeName   = s.productName.replace(/^Plastik\s+/i, '');
             const dotColor   = s.quantity <= s.minThreshold ? '#d4183d' : s.quantity <= s.minThreshold * 3 ? '#d4a017' : '#52b96a';
             const isLast     = i === items.length - 1;

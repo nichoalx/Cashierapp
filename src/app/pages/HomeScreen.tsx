@@ -673,7 +673,11 @@ export default function HomeScreen() {
           <div style={{ background: '#eef0f5', boxShadow: '5px 5px 12px #c8cad1, -5px -5px 12px #ffffff', borderRadius: '14px', padding: '10px', animation: 'panel-in 180ms cubic-bezier(0.16, 1, 0.3, 1) both' }}>
             <div style={{ fontSize: '8px', color: '#9a9db5', letterSpacing: '0.06em', marginBottom: 7 }}>UKURAN PLASTIK</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
-              {plasticSizes.map(ps => (
+              {[...plasticSizes].sort((a, b) => {
+                const p = (s: string) => s.split(/[×x]/).map(Number);
+                const [a1, a2] = p(a.size), [b1, b2] = p(b.size);
+                return a1 !== b1 ? a1 - b1 : a2 - b2;
+              }).map(ps => (
                 <button key={ps.id} onClick={() => handlePlasticSizeClick(ps.id)} style={{ borderRadius: '9px', padding: '16px 8px', minHeight: 44, border: 'none', cursor: 'pointer', background: '#eef0f5', boxShadow: '3px 3px 7px #c8cad1, -3px -3px 7px #ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <span style={{ fontSize: '11px', fontWeight: 700, color: PLASTIC_COLOR }}>{ps.size}</span>
                 </button>

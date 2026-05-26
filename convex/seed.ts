@@ -50,6 +50,22 @@ export const seedProducts = internalMutation({
   },
 });
 
+export const setSoybeanThresholds = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const allStock = await ctx.db.query("stock").collect();
+    let updated = 0;
+    for (const row of allStock) {
+      const product = await ctx.db.get(row.productId);
+      if (product?.unit === 'kg' && product.name !== 'E') {
+        await ctx.db.patch(row._id, { minThreshold: 3000 });
+        updated++;
+      }
+    }
+    return { updated };
+  },
+});
+
 export const cleanOrphanedStock = internalMutation({
   args: {},
   handler: async (ctx) => {
