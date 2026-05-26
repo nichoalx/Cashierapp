@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router';
 import { api } from '../../../convex/_generated/api';
 import { Id } from '../../../convex/_generated/dataModel';
 import { formatRupiah } from '../store';
-import { Search, UserPlus, Trash2, Phone, User, X, Users, ChevronRight } from 'lucide-react';
+import { Search, UserPlus, Trash2, Phone, User, X, Users, Pencil, Check, MoreVertical } from 'lucide-react';
 
 const SHD_RAISED_STD    = '4px 4px 9px #c8cad1, -4px -4px 9px #ffffff';
 const SHD_RAISED_LIST   = '3px 3px 7px #c8cad1, -3px -3px 7px rgba(255,255,255,0.92)';
@@ -42,6 +42,7 @@ function initials(name: string) {
 const AVATAR_COLORS = [
   '#f5903d', '#4a90d9', '#52b96a', '#9b6dff',
   '#e05a6a', '#38b2ac', '#d4a017', '#e84393',
+  '#6366f1', '#0ea5e9', '#14b8a6', '#64748b',
 ];
 
 function getAvatarColor(id: string) {
@@ -55,22 +56,143 @@ interface Member {
   name: string;
   phone: string;
   outstanding: number;
+  color?: string;
+}
+
+const SHD_RECESSED_MODAL = 'inset 3px 3px 7px #c8cad1, inset -3px -3px 7px #ffffff';
+const SHD_ACTION_MODAL   = '4px 4px 10px rgba(0,0,0,0.16), -3px -3px 8px rgba(255,255,255,0.5)';
+
+function EditMemberModal({ member, onSave, onClose }: {
+  member: Member;
+  onSave: (id: Id<'members'>, name: string, phone: string, color: string) => void;
+  onClose: () => void;
+}) {
+  const [name, setName] = useState(member.name);
+  const [phone, setPhone] = useState(member.phone);
+  const [color, setColor] = useState(member.color ?? getAvatarColor(member.id));
+  const [nameError, setNameError] = useState('');
+  const [pressed, setPressed] = useState(false);
+
+  const valid = name.trim().length > 0;
+  const phoneDigits = phone.replace(/\D/g, '');
+  const phoneOutOfRange = phone.trim() !== '' && phoneDigits.length > 0 &&
+    (phoneDigits.length < 10 || phoneDigits.length > 13);
+
+  const handleSave = () => {
+    if (!valid) { setNameError('Nama tidak boleh kosong.'); return; }
+    onSave(member.id, name.trim(), phone.trim(), color);
+    onClose();
+  };
+
+  return (
+    <div
+      style={{ position: 'fixed', left: 0, right: 0, top: 'var(--app-visual-offset-top)', height: 'var(--app-visual-height)', zIndex: 200, background: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
+      onClick={onClose}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{ background: '#eef0f5', borderRadius: '22px 22px 0 0', width: '100%', maxWidth: 430, boxShadow: '0 -8px 30px rgba(0,0,0,0.15)', padding: '20px 16px 32px', animation: 'sheet-up 250ms cubic-bezier(0.16,1,0.3,1) both' }}
+      >
+        {/* Live avatar preview */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+          <div style={{ width: 42, height: 42, borderRadius: '12px', flexShrink: 0, background: `${color}1e`, boxShadow: '3px 3px 7px #c8cad1, -3px -3px 7px #ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <span style={{ fontSize: '13px', fontWeight: 800, color, lineHeight: 1 }}>{initials(name || member.name)}</span>
+          </div>
+          <div>
+            <div style={{ fontSize: '9px', color: '#9a9db5', letterSpacing: '0.1em' }}>EDIT ANGGOTA</div>
+            <div style={{ fontSize: '15px', fontWeight: 700, color: '#2d3142' }}>{member.name}</div>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {/* Name */}
+          <div>
+            <input
+              type="text"
+              placeholder="Nama lengkap"
+              value={name}
+              onChange={e => { setName(e.target.value); setNameError(''); }}
+              autoFocus
+              maxLength={60}
+              style={{ width: '100%', boxSizing: 'border-box', background: '#eef0f5', boxShadow: SHD_RECESSED_MODAL, borderRadius: 12, border: 'none', outline: 'none', padding: '11px 14px', fontSize: '14px', color: '#2d3142', fontFamily: 'inherit' }}
+            />
+            {nameError && <div style={{ fontSize: '11px', color: '#d4183d', marginTop: 4, paddingLeft: 2 }}>{nameError}</div>}
+          </div>
+
+          {/* Phone */}
+          <div>
+            <input
+              type="tel"
+              placeholder="Nomor HP (opsional)"
+              value={phone}
+              onChange={e => setPhone(e.target.value)}
+              style={{ width: '100%', boxSizing: 'border-box', background: '#eef0f5', boxShadow: SHD_RECESSED_MODAL, borderRadius: 12, border: 'none', outline: 'none', padding: '11px 14px', fontSize: '14px', color: '#2d3142', fontFamily: 'inherit' }}
+            />
+            {phone.trim() && (
+              <div style={{ fontSize: '11px', color: phoneOutOfRange ? '#d4a017' : '#9a9db5', marginTop: 4, paddingLeft: 2 }}>
+                {phoneOutOfRange ? `Periksa nomor: ${phoneDigits.length} digit (diharapkan 10–13)` : formatPhone(phone)}
+              </div>
+            )}
+          </div>
+
+          {/* Color picker */}
+          <div>
+            <div style={{ fontSize: '9px', color: '#9a9db5', letterSpacing: '0.1em', marginBottom: 8 }}>WARNA AVATAR</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8 }}>
+              {AVATAR_COLORS.map(c => (
+                <button
+                  key={c}
+                  onClick={() => setColor(c)}
+                  style={{
+                    width: '100%', aspectRatio: '1 / 1', borderRadius: '10px', background: c, border: 'none', cursor: 'pointer',
+                    boxShadow: color === c
+                      ? `0 0 0 2px #eef0f5, 0 0 0 4px ${c}, 2px 2px 6px #c8cad1`
+                      : '2px 2px 5px rgba(0,0,0,0.12), -1px -1px 4px rgba(255,255,255,0.7)',
+                    transform: color === c ? 'scale(1.15)' : 'scale(1)',
+                    transition: 'transform 0.15s, box-shadow 0.15s',
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Save */}
+          <button
+            onClick={handleSave}
+            disabled={!valid}
+            onPointerDown={() => setPressed(true)}
+            onPointerUp={() => setPressed(false)}
+            onPointerLeave={() => setPressed(false)}
+            style={{ height: 48, borderRadius: 14, border: 'none', cursor: valid ? 'pointer' : 'default', background: valid ? '#4a90d9' : '#a8acbe', color: '#fff', fontWeight: 700, fontSize: '14px', boxShadow: pressed && valid ? 'inset 3px 3px 8px rgba(0,0,0,0.22)' : SHD_ACTION_MODAL, transform: pressed && valid ? 'scale(0.97)' : 'scale(1)', transition: 'box-shadow 0.07s, transform 0.07s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+          >
+            <Check size={15} /> Simpan Perubahan
+          </button>
+        </div>
+      </div>
+      <style>{`@keyframes sheet-up { from { transform: translateY(100%); } to { transform: translateY(0); } }`}</style>
+    </div>
+  );
 }
 
 export default function MembersScreen() {
   const rawMembers = useQuery(api.members.list);
   const addMemberMutation = useMutation(api.members.add);
+  const updateMemberMutation = useMutation(api.members.update);
   const removeMemberMutation = useMutation(api.members.remove);
   const navigate = useNavigate();
 
   const members: Member[] = useMemo(
-    () => (rawMembers ?? []).map(m => ({ id: m._id, name: m.name, phone: m.phone ?? '', outstanding: m.outstanding ?? 0 })),
+    () => (rawMembers ?? []).map(m => ({ id: m._id, name: m.name, phone: m.phone ?? '', outstanding: m.outstanding ?? 0, color: m.color })),
     [rawMembers],
   );
 
   const addMember = useCallback((name: string, phone: string) => {
     void addMemberMutation({ name, phone: phone || undefined });
   }, [addMemberMutation]);
+
+  const handleEditSave = useCallback((id: Id<'members'>, name: string, phone: string, color: string) => {
+    void updateMemberMutation({ memberId: id, name, phone: phone || undefined, color });
+  }, [updateMemberMutation]);
 
   const removeMember = useCallback((id: Id<'members'>) => {
     void removeMemberMutation({ memberId: id });
@@ -86,6 +208,8 @@ export default function MembersScreen() {
   const [dupWarn, setDupWarn] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<{ id: Id<'members'>; name: string } | null>(null);
   const [sortOrder, setSortOrder] = useState<'az' | 'newest'>('az');
+  const [editingMember, setEditingMember] = useState<Member | null>(null);
+  const [actionsOpen, setActionsOpen] = useState<Id<'members'> | null>(null);
 
   const phoneInputRef = useRef<HTMLInputElement>(null);
   const deleteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -263,6 +387,14 @@ export default function MembersScreen() {
           outline-offset: 2px;
         }
       `}</style>
+
+      {editingMember && (
+        <EditMemberModal
+          member={editingMember}
+          onSave={handleEditSave}
+          onClose={() => setEditingMember(null)}
+        />
+      )}
 
       {/* Visually-hidden live region: announces member addition to screen readers */}
       <div
@@ -519,7 +651,7 @@ export default function MembersScreen() {
           </li>
         ) : (
           filtered.map(m => {
-            const color = getAvatarColor(m.id);
+            const color = m.color ?? getAvatarColor(m.id);
             const confirming = deleteConfirm === m.id;
             const justAdded = recentlyAddedId === m.id;
             return (
@@ -606,20 +738,33 @@ export default function MembersScreen() {
                     </button>
                   </div>
                 ) : (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                  <div style={{ position: 'relative', flexShrink: 0 }}>
                     <button
-                      onClick={e => { e.stopPropagation(); setDeleteConfirm(m.id); }}
-                      aria-label={`Hapus ${m.name}`}
-                      style={{
-                        width: 36, height: 36, borderRadius: '9px', border: 'none', cursor: 'pointer',
-                        background: '#eef0f5',
-                        boxShadow: SHD_RAISED_STD,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      }}
+                      onClick={e => { e.stopPropagation(); setActionsOpen(actionsOpen === m.id ? null : m.id); }}
+                      aria-label={`Opsi untuk ${m.name}`}
+                      style={{ width: 32, height: 32, borderRadius: '9px', border: 'none', cursor: 'pointer', background: '#eef0f5', boxShadow: SHD_RAISED_STD, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                     >
-                      <Trash2 size={13} color="#c0c4d0" />
+                      <MoreVertical size={14} color="#9a9db5" />
                     </button>
-                    <ChevronRight size={14} color="#c0c4d0" />
+                    {actionsOpen === m.id && (
+                      <>
+                        <div style={{ position: 'fixed', inset: 0, zIndex: 10 }} onClick={e => { e.stopPropagation(); setActionsOpen(null); }} />
+                        <div style={{ position: 'absolute', right: 0, top: 36, zIndex: 11, background: '#eef0f5', boxShadow: '5px 5px 14px #c0c3ca, -5px -5px 14px #ffffff', borderRadius: 12, padding: 6, display: 'flex', flexDirection: 'column', gap: 2, minWidth: 120 }}>
+                          <button
+                            onClick={e => { e.stopPropagation(); setEditingMember(m); setActionsOpen(null); }}
+                            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderRadius: 8, border: 'none', background: 'transparent', cursor: 'pointer', width: '100%', fontSize: '13px', color: '#2d3142', fontWeight: 600, fontFamily: 'inherit' }}
+                          >
+                            <Pencil size={13} color="#9a9db5" /> Edit
+                          </button>
+                          <button
+                            onClick={e => { e.stopPropagation(); setDeleteConfirm(m.id); setActionsOpen(null); }}
+                            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderRadius: 8, border: 'none', background: 'transparent', cursor: 'pointer', width: '100%', fontSize: '13px', color: '#d4183d', fontWeight: 600, fontFamily: 'inherit' }}
+                          >
+                            <Trash2 size={13} color="#d4183d" /> Hapus
+                          </button>
+                        </div>
+                      </>
+                    )}
                   </div>
                 )}
               </div>

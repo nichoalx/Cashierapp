@@ -180,6 +180,14 @@ export default function OrderDetailScreen() {
                   <div style={{ fontSize: '11px', color: '#9a9db5', marginTop: 2 }}>
                     {item.quantity % 1 === 0 ? item.quantity : item.quantity.toFixed(1)} {item.unit} × {formatRupiah(item.unitPrice)}
                   </div>
+                  {item.currentPrice !== item.unitPrice && (
+                    <div style={{ fontSize: '10px', marginTop: 3, display: 'flex', alignItems: 'center', gap: 3 }}>
+                      <span style={{ color: '#b0b3c8' }}>kini</span>
+                      <span style={{ fontWeight: 600, color: item.currentPrice > item.unitPrice ? '#52b96a' : '#d4183d' }}>
+                        {formatRupiah(item.currentPrice)} {item.currentPrice > item.unitPrice ? '↑' : '↓'}
+                      </span>
+                    </div>
+                  )}
                 </div>
                 <span style={{ fontSize: '13px', fontWeight: 700, color: '#4a4e69', flexShrink: 0 }}>{formatRupiah(item.total)}</span>
               </div>

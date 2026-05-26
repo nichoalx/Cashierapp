@@ -52,6 +52,7 @@ export default defineSchema({
   members: defineTable({
     name: v.string(),
     phone: v.optional(v.string()),
+    color: v.optional(v.string()),
   }).index("by_name", ["name"]),
 
   // ─── Transactions ─────────────────────────────────────────────────────────────

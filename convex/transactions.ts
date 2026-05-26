@@ -168,6 +168,9 @@ export const getDetail = query({
     const items = await Promise.all(rawItems.map(async (item) => {
       const product = await ctx.db.get(item.productId);
       const variant = item.variantId ? await ctx.db.get(item.variantId) : null;
+      const priceRow = item.variantId
+        ? await ctx.db.query("prices").withIndex("by_variantId", q => q.eq("variantId", item.variantId)).first()
+        : await ctx.db.query("prices").withIndex("by_productId", q => q.eq("productId", item.productId)).first();
       return {
         id: item._id,
         productName: variant
@@ -177,6 +180,7 @@ export const getDetail = query({
         quantity: item.quantity,
         unit: product?.unit ?? 'pcs',
         unitPrice: item.unitPrice,
+        currentPrice: priceRow?.price ?? item.unitPrice,
         total: item.totalAmount,
         color: product?.color ?? '#9a9db5',
       };

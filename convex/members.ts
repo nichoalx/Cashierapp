@@ -87,6 +87,20 @@ export const add = mutation({
   },
 });
 
+export const update = mutation({
+  args: {
+    memberId: v.id("members"),
+    name: v.string(),
+    phone: v.optional(v.string()),
+    color: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Unauthorized");
+    await ctx.db.patch(args.memberId, { name: args.name, phone: args.phone, color: args.color });
+  },
+});
+
 export const remove = mutation({
   args: { memberId: v.id("members") },
   handler: async (ctx, args) => {
