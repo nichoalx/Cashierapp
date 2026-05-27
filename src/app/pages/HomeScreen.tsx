@@ -1,5 +1,5 @@
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import { X, MessageSquare, User, Check, CreditCard } from 'lucide-react';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { X, MessageSquare, User, Check } from 'lucide-react';
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '../../../convex/_generated/api';
 import { Id } from '../../../convex/_generated/dataModel';
@@ -152,6 +152,7 @@ export default function HomeScreen() {
   const [payStash, setPayStash] = useState<PayStash | null>(null);
   const [payIsDebt, setPayIsDebt] = useState(false);
   const [cashInput, setCashInput] = useState(''); // raw digits only
+  const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const appliedDiscount = parseFloat(discountInput) || 0;
 
@@ -233,9 +234,8 @@ export default function HomeScreen() {
     setInputValue('0');
   }, [selectedProduct, inputValue, items, eceranPrice, plasticProduct]);
 
-  const doCommit = useCallback((stash: PayStash, isDebt: boolean, cashPaid: number) => {
-    const total = Math.max(0, stash.items.reduce((s, i) => s + i.total, 0) - stash.discount);
-    const amountPaid = isDebt ? 0 : (cashPaid > 0 && cashPaid < total ? cashPaid : undefined);
+  // Shared commit helper — does not touch phase state
+  const commitStash = useCallback((stash: PayStash, amountPaid: number | undefined) => {
     createTx({
       items: stash.items.map(item => ({
         productId: item.productId as Id<'products'>,
@@ -249,18 +249,19 @@ export default function HomeScreen() {
       discount: stash.discount > 0 ? stash.discount : undefined,
       amountPaid,
     }).catch(console.error);
-    setPayPhase('success');
-    setPayStash(null);
-    setCashInput('');
-    setTimeout(() => { setPayPhase('idle'); setPayIsDebt(false); }, 1200);
   }, [createTx]);
 
   const handleComplete = useCallback(() => {
     if (items.length === 0) return;
     const discountAmount = parseFloat(discountInput) || 0;
-    const stash: PayStash = { items: [...items], remarks: remarks.trim(), memberId: selectedMember?.id, memberName: selectedMember?.name, discount: discountAmount };
+    const stash: PayStash = {
+      items: [...items], remarks: remarks.trim(),
+      memberId: selectedMember?.id, memberName: selectedMember?.name,
+      discount: discountAmount,
+    };
     const isDebt = debtMode;
 
+    // Clear cart immediately regardless of path
     setItems([]);
     setStep({ type: 'idle' });
     setInputValue('0');
@@ -269,18 +270,43 @@ export default function HomeScreen() {
     setDiscountMode(false);
     setDiscountInput('0');
     setDebtMode(false);
-
     setPayStash(stash);
     setPayIsDebt(isDebt);
     setCashInput('');
-    setPayPhase('payment');
-  }, [items, remarks, selectedMember, discountInput, debtMode]);
 
-  const handlePayConfirm = useCallback((overrideDebt?: boolean) => {
-    if (payStash) doCommit(payStash, overrideDebt ?? payIsDebt, Number(cashInput));
-  }, [payStash, payIsDebt, doCommit, cashInput]);
+    if (isDebt) {
+      // Kredit: show "Uang diterima?" prompt before committing
+      setPayPhase('payment');
+    } else {
+      // Normal: commit is deferred — show success + 5s undo window
+      setPayPhase('success');
+      if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+      undoTimerRef.current = setTimeout(() => {
+        commitStash(stash, undefined);
+        setPayPhase('idle');
+        setPayStash(null);
+        undoTimerRef.current = null;
+      }, 5000);
+    }
+  }, [items, remarks, selectedMember, discountInput, debtMode, commitStash]);
+
+  // Confirm kredit payment (optionally with a partial cash amount)
+  const handlePayConfirm = useCallback(() => {
+    if (!payStash) return;
+    const total = Math.max(0, payStash.items.reduce((s, i) => s + i.total, 0) - payStash.discount);
+    const cash = Number(cashInput);
+    // 0 or empty = fully unpaid kredit; otherwise record as partial payment
+    const amountPaid: number | undefined = cash > 0 && cash < total ? cash : (cash === 0 ? 0 : undefined);
+    commitStash(payStash, amountPaid);
+    setPayPhase('success');
+    setPayStash(null);
+    setCashInput('');
+    setTimeout(() => { setPayPhase('idle'); setPayIsDebt(false); }, 1200);
+  }, [payStash, cashInput, commitStash]);
 
   const handlePayUndo = useCallback(() => {
+    // Cancel pending deferred commit (normal path)
+    if (undoTimerRef.current) { clearTimeout(undoTimerRef.current); undoTimerRef.current = null; }
     if (payStash) {
       setItems(payStash.items);
       setRemarks(payStash.remarks);
@@ -409,67 +435,71 @@ export default function HomeScreen() {
           {/* Scrollable items area */}
           <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' }}>
             {payPhase === 'payment' ? (
-              /* Payment confirmation UI */
-              <div style={{ height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 10, animation: 'flash-in 200ms cubic-bezier(0.16, 1, 0.3, 1) both' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '10px', color: '#9a9db5', fontWeight: 600 }}>TOTAL</span>
-                  <span style={{ fontSize: '16px', fontWeight: 700, color: '#2d3142' }}>{formatRupiah(Math.max(0, (payStash?.items.reduce((s,i)=>s+i.total,0)??0) - (payStash?.discount??0)))}</span>
-                </div>
-                {!payIsDebt && (
-                  <>
+              /* Kredit only — ask for partial cash amount before committing */
+              (() => {
+                const kTotal = Math.max(0, (payStash?.items.reduce((s,i)=>s+i.total,0)??0) - (payStash?.discount??0));
+                const kCash  = Number(cashInput) || 0;
+                return (
+                  <div style={{ height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 10, animation: 'flash-in 200ms cubic-bezier(0.16, 1, 0.3, 1) both' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '10px', color: '#d4a017', fontWeight: 600 }}>KREDIT</span>
+                      <span style={{ fontSize: '16px', fontWeight: 700, color: '#2d3142' }}>{formatRupiah(kTotal)}</span>
+                    </div>
                     <div style={{ position: 'relative' }}>
                       <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', fontSize: '11px', color: '#9a9db5', fontWeight: 600, pointerEvents: 'none' }}>Rp</span>
                       <input
-                        type="text"
-                        inputMode="numeric"
-                        placeholder="Uang diterima..."
-                        value={cashInput ? Number(cashInput).toLocaleString('id-ID') : ''}
+                        type="text" inputMode="numeric"
+                        placeholder="Uang diterima (kosong = belum lunas)"
+                        value={cashInput ? kCash.toLocaleString('id-ID') : ''}
                         onChange={e => setCashInput(e.target.value.replace(/\D/g, ''))}
                         style={{ width: '100%', boxSizing: 'border-box', background: '#eef0f5', boxShadow: 'inset 2px 2px 5px #c8cad1, inset -2px -2px 5px #ffffff', borderRadius: 10, border: 'none', outline: 'none', padding: '8px 10px 8px 30px', fontSize: '13px', color: '#2d3142', fontFamily: 'inherit' }}
                       />
                     </div>
-                    {(() => {
-                      const total = Math.max(0, (payStash?.items.reduce((s,i)=>s+i.total,0)??0) - (payStash?.discount??0));
-                      const cash = Number(cashInput) || 0;
-                      if (cash > total) return (
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span style={{ fontSize: '10px', color: '#52b96a', fontWeight: 600 }}>KEMBALIAN</span>
-                          <span style={{ fontSize: '14px', fontWeight: 700, color: '#52b96a' }}>{formatRupiah(cash - total)}</span>
-                        </div>
-                      );
-                      return null;
-                    })()}
-                  </>
-                )}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <button
-                    onClick={() => setPayIsDebt(d => !d)}
-                    style={{ flex: 1, height: 32, borderRadius: 9, border: 'none', cursor: 'pointer', background: payIsDebt ? '#d4a017' : '#eef0f5', boxShadow: payIsDebt ? '0 2px 6px rgba(212,160,23,0.35)' : 'inset 2px 2px 5px #c8cad1, inset -2px -2px 5px #ffffff', color: payIsDebt ? '#fff' : '#d4a017', fontSize: '11px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, transition: 'all 0.15s' }}
-                  >
-                    <CreditCard size={12} />
-                    Belum Lunas
-                  </button>
-                  <button
-                    onClick={handlePayUndo}
-                    style={{ height: 32, padding: '0 12px', borderRadius: 9, border: 'none', cursor: 'pointer', background: '#eef0f5', boxShadow: 'inset 2px 2px 5px #c8cad1, inset -2px -2px 5px #ffffff', color: '#9a9db5', fontSize: '11px', fontWeight: 600 }}
-                  >
-                    Batalkan
-                  </button>
-                  <button
-                    onClick={() => handlePayConfirm()}
-                    style={{ height: 32, padding: '0 12px', borderRadius: 9, border: 'none', cursor: 'pointer', background: '#52b96a', boxShadow: '3px 3px 8px rgba(0,0,0,0.14), -2px -2px 6px rgba(255,255,255,0.5)', color: '#fff', fontSize: '11px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}
-                  >
-                    <Check size={12} /> Konfirmasi
-                  </button>
-                </div>
-              </div>
+                    {kCash > kTotal && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '10px', color: '#52b96a', fontWeight: 600 }}>KEMBALIAN</span>
+                        <span style={{ fontSize: '14px', fontWeight: 700, color: '#52b96a' }}>{formatRupiah(kCash - kTotal)}</span>
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button onClick={handlePayUndo} style={{ flex: 1, height: 32, borderRadius: 9, border: 'none', cursor: 'pointer', background: '#eef0f5', boxShadow: 'inset 2px 2px 5px #c8cad1, inset -2px -2px 5px #ffffff', color: '#9a9db5', fontSize: '11px', fontWeight: 600 }}>
+                        Batalkan
+                      </button>
+                      <button onClick={handlePayConfirm} style={{ flex: 2, height: 32, borderRadius: 9, border: 'none', cursor: 'pointer', background: '#52b96a', boxShadow: '3px 3px 8px rgba(0,0,0,0.14), -2px -2px 6px rgba(255,255,255,0.5)', color: '#fff', fontSize: '11px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                        <Check size={12} /> Konfirmasi
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()
             ) : payPhase === 'success' ? (
-              <div role="alert" style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, animation: 'flash-in 200ms cubic-bezier(0.16, 1, 0.3, 1) both' }}>
-                <div style={{ width: 22, height: 22, borderRadius: '50%', background: '#52b96a', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <Check size={13} color="#fff" strokeWidth={3} />
+              payStash !== null ? (
+                /* Normal transaction — undo window (commit fires after 5s) */
+                <div style={{ height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 8, animation: 'flash-in 200ms cubic-bezier(0.16, 1, 0.3, 1) both' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div style={{ width: 20, height: 20, borderRadius: '50%', background: '#52b96a', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <Check size={11} color="#fff" strokeWidth={3} />
+                      </div>
+                      <span style={{ fontSize: '13px', fontWeight: 700, color: '#52b96a' }}>Berhasil!</span>
+                    </div>
+                    <button onClick={handlePayUndo} style={{ height: 30, padding: '0 14px', borderRadius: 8, border: 'none', cursor: 'pointer', background: '#eef0f5', boxShadow: 'inset 2px 2px 5px #c8cad1, inset -2px -2px 5px #ffffff', color: '#9a9db5', fontSize: '11px', fontWeight: 600 }}>
+                      Batal
+                    </button>
+                  </div>
+                  <div style={{ height: 3, background: '#e0e3ec', borderRadius: 2, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', background: '#52b96a', borderRadius: 2, animation: 'undo-shrink 5s linear forwards' }} />
+                  </div>
                 </div>
-                <span style={{ fontSize: '13px', fontWeight: 700, color: '#52b96a' }}>Transaksi Berhasil!</span>
-              </div>
+              ) : (
+                /* Kredit confirmed — brief flash */
+                <div role="alert" style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, animation: 'flash-in 200ms cubic-bezier(0.16, 1, 0.3, 1) both' }}>
+                  <div style={{ width: 22, height: 22, borderRadius: '50%', background: '#52b96a', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <Check size={13} color="#fff" strokeWidth={3} />
+                  </div>
+                  <span style={{ fontSize: '13px', fontWeight: 700, color: '#52b96a' }}>Berhasil!</span>
+                </div>
+              )
             ) : items.length === 0 ? (
               <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <span style={{ fontSize: '11px', color: '#c0c4d0' }}>Pilih produk & masukkan jumlah</span>
@@ -614,49 +644,83 @@ export default function HomeScreen() {
 
         {/* Product Selection */}
         <div style={{ background: '#eef0f5', boxShadow: '5px 5px 12px #c8cad1, -5px -5px 12px #ffffff', borderRadius: '16px', padding: '12px' }}>
-          <div style={{ marginBottom: 9 }}>
-            <div style={{ fontSize: '8px', color: '#9a9db5', letterSpacing: '0.06em', marginBottom: 7 }}>KEDELAI</div>
-            <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
-              {/* Eceran modifier button */}
-              {(() => {
-                const eActive = step.type === 'eceran_brand' || (step.type === 'quantity' && step.isEceran);
-                return (
-                  <button onClick={handleEceranClick} style={neuBtn('#9b6dff', eActive)}>
-                    <span style={{ fontSize: '12px', fontWeight: 700, color: eActive ? '#fff' : '#9b6dff' }}>E</span>
+          {rawProducts === undefined ? (
+            /* Skeleton while products load */
+            <>
+              <div style={{ marginBottom: 9 }}>
+                <div style={{ fontSize: '8px', color: '#9a9db5', letterSpacing: '0.06em', marginBottom: 7 }}>KEDELAI</div>
+                <div style={{ display: 'flex', gap: 7 }}>
+                  {[0, 1, 2, 3, 4].map(i => (
+                    <div key={i} style={{
+                      flex: 1, minWidth: compact ? 40 : 48,
+                      height: compact ? 44 : 50,
+                      borderRadius: 11, background: '#e0e3ec',
+                      animation: `skel-pulse 1.4s ease-in-out ${i * 70}ms infinite`,
+                    }} />
+                  ))}
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: '8px', color: '#9a9db5', letterSpacing: '0.06em', marginBottom: 7 }}>LAINNYA</div>
+                <div style={{ display: 'flex', gap: 7 }}>
+                  {[0, 1, 2].map(i => (
+                    <div key={i} style={{
+                      flex: 1, minWidth: compact ? 40 : 48,
+                      height: compact ? 44 : 50,
+                      borderRadius: 11, background: '#e0e3ec',
+                      animation: `skel-pulse 1.4s ease-in-out ${(i + 5) * 70}ms infinite`,
+                    }} />
+                  ))}
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{ marginBottom: 9 }}>
+                <div style={{ fontSize: '8px', color: '#9a9db5', letterSpacing: '0.06em', marginBottom: 7 }}>KEDELAI</div>
+                <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
+                  {/* Eceran modifier button */}
+                  {(() => {
+                    const eActive = step.type === 'eceran_brand' || (step.type === 'quantity' && step.isEceran);
+                    return (
+                      <button onClick={handleEceranClick} style={neuBtn('#9b6dff', eActive)}>
+                        <span style={{ fontSize: '12px', fontWeight: 700, color: eActive ? '#fff' : '#9b6dff' }}>E</span>
+                      </button>
+                    );
+                  })()}
+                  {soybeanProducts.map(p => {
+                    const isActive = step.type === 'quantity' && step.productId === p.id;
+                    const withEceran = isActive && !!(step.type === 'quantity' && step.isEceran);
+                    const btnColor = withEceran ? '#9b6dff' : p.color;
+                    return (
+                      <button key={p.id} onClick={() => handleSoybeanClick(p.id)} style={neuBtn(btnColor, isActive)}>
+                        <span style={{ fontSize: '12px', fontWeight: 700, color: isActive ? '#fff' : p.color }}>{p.name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: '8px', color: '#9a9db5', letterSpacing: '0.06em', marginBottom: 7 }}>LAINNYA</div>
+                <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
+                  <button
+                    onClick={handlePlasticClick}
+                    style={neuBtn(PLASTIC_COLOR, step.type === 'plastic_size' || (step.type === 'quantity' && step.productId === 'plastic'))}
+                  >
+                    <span style={{ fontSize: '12px', fontWeight: 700, color: (step.type === 'plastic_size' || (step.type === 'quantity' && step.productId === 'plastic')) ? '#fff' : PLASTIC_COLOR }}>P</span>
                   </button>
-                );
-              })()}
-              {soybeanProducts.map(p => {
-                const isActive = step.type === 'quantity' && step.productId === p.id;
-                const withEceran = isActive && !!(step.type === 'quantity' && step.isEceran);
-                const btnColor = withEceran ? '#9b6dff' : p.color;
-                return (
-                  <button key={p.id} onClick={() => handleSoybeanClick(p.id)} style={neuBtn(btnColor, isActive)}>
-                    <span style={{ fontSize: '12px', fontWeight: 700, color: isActive ? '#fff' : p.color }}>{p.name}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-          <div>
-            <div style={{ fontSize: '8px', color: '#9a9db5', letterSpacing: '0.06em', marginBottom: 7 }}>LAINNYA</div>
-            <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
-              <button
-                onClick={handlePlasticClick}
-                style={neuBtn(PLASTIC_COLOR, step.type === 'plastic_size' || (step.type === 'quantity' && step.productId === 'plastic'))}
-              >
-                <span style={{ fontSize: '12px', fontWeight: 700, color: (step.type === 'plastic_size' || (step.type === 'quantity' && step.productId === 'plastic')) ? '#fff' : PLASTIC_COLOR }}>P</span>
-              </button>
-              {otherProducts.map(p => {
-                const isActive = step.type === 'quantity' && step.productId === p.id;
-                return (
-                  <button key={p.id} onClick={() => handleOtherClick(p.id)} style={neuBtn(p.color, isActive)}>
-                    <span style={{ fontSize: '12px', fontWeight: 700, color: isActive ? '#fff' : p.color }}>{p.name}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+                  {otherProducts.map(p => {
+                    const isActive = step.type === 'quantity' && step.productId === p.id;
+                    return (
+                      <button key={p.id} onClick={() => handleOtherClick(p.id)} style={neuBtn(p.color, isActive)}>
+                        <span style={{ fontSize: '12px', fontWeight: 700, color: isActive ? '#fff' : p.color }}>{p.name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Plastic size grid */}
@@ -692,6 +756,14 @@ export default function HomeScreen() {
       </div>
 
       <style>{`
+        @keyframes skel-pulse {
+          0%, 100% { opacity: 0.55; }
+          50%       { opacity: 1; }
+        }
+        @keyframes undo-shrink {
+          from { width: 100%; }
+          to   { width: 0%; }
+        }
         @keyframes cursor-blink {
           0%, 100% { opacity: 1; }
           50% { opacity: 0; }

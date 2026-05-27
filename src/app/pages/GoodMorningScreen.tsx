@@ -49,7 +49,7 @@ export default function GoodMorningScreen() {
     if (exitRef.current || showEditor) return;
     exitRef.current = true;
     setExiting(true);
-    setTimeout(() => navigate('/', { replace: true }), 650);
+    setTimeout(() => navigate('/', { replace: true }), 320);
   }, [navigate, showEditor]);
 
   // Price data
@@ -102,8 +102,7 @@ export default function GoodMorningScreen() {
           position: 'relative', overflow: 'hidden',
           cursor: 'pointer',
           opacity: exiting ? 0 : 1,
-          transform: exiting ? 'scale(0.96)' : 'scale(1)',
-          transition: 'opacity 0.65s cubic-bezier(0.16, 1, 0.3, 1), transform 0.65s cubic-bezier(0.16, 1, 0.3, 1)',
+          transition: 'opacity 0.3s ease-out',
         }}
       >
         {/* Orbs */}

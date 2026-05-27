@@ -227,8 +227,10 @@ function AdditionDateNav({
 }
 
 // ─────────── Undo Toast ───────────
+const UNDO_TOAST_MS = 10_000;
+
 function UndoToast({ result, startedAt, onUndo }: { result: AdditionResult; startedAt: number; onUndo: () => void }) {
-  const DURATION = 2400;
+  const DURATION = UNDO_TOAST_MS;
   const [, setTick] = useState(0);
 
   useEffect(() => {
@@ -626,6 +628,48 @@ function AdditionEntry({ entry, index }: { entry: AdditionRow; index: number }) 
   );
 }
 
+// ─────────── Skeleton ───────────
+function SkeletonBox({ w, h, r = 8, mt = 0 }: { w?: string | number; h: number; r?: number; mt?: number }) {
+  return (
+    <div style={{
+      width: w ?? '100%', height: h, borderRadius: r,
+      background: '#e0e3ec', marginTop: mt,
+      animation: 'skel-pulse 1.4s ease-in-out infinite',
+      flexShrink: 0,
+    }} />
+  );
+}
+
+function StockScreenSkeleton() {
+  return (
+    <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: '14px var(--app-page-gutter) 8px', gap: 10 }}>
+      {/* Price ticker placeholder */}
+      <SkeletonBox h={36} r={12} />
+
+      {/* Alert row + button row */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 7 }}>
+          <SkeletonBox w={80} h={30} r={999} />
+        </div>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <SkeletonBox w={34} h={32} r={9} />
+          <SkeletonBox w={100} h={32} r={9} />
+        </div>
+      </div>
+
+      {/* Stock cards */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <SkeletonBox w={60} h={12} r={6} />
+        {[0, 1, 2].map(i => <SkeletonBox key={i} h={72} r={14} />)}
+        <SkeletonBox w={60} h={12} r={6} mt={4} />
+        {[0, 1].map(i => <SkeletonBox key={i} h={72} r={14} />)}
+      </div>
+
+      <style>{`@keyframes skel-pulse { 0%,100%{opacity:.55} 50%{opacity:1} }`}</style>
+    </div>
+  );
+}
+
 // ─────────── Main Screen ───────────
 export default function StockScreen() {
   const rawStock     = useQuery(api.stock.list);
@@ -693,7 +737,7 @@ export default function StockScreen() {
   const handleStockAdded = (result: AdditionResult) => {
     if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
     setUndoState({ result, startedAt: Date.now() });
-    undoTimerRef.current = setTimeout(() => setUndoState(null), 10000);
+    undoTimerRef.current = setTimeout(() => setUndoState(null), UNDO_TOAST_MS);
   };
 
   const handleUndo = () => {
@@ -740,6 +784,8 @@ export default function StockScreen() {
     });
     return groups;
   }, [filteredAdditions, historyDate]);
+
+  if (rawStock === undefined) return <StockScreenSkeleton />;
 
   return (
     <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: '14px var(--app-page-gutter) 8px', gap: 10 }}>

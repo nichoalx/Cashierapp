@@ -40,11 +40,11 @@ export default function WelcomeScreen() {
     if (exiting || isLoading) return;
     setExiting(true);
     if (!user) {
-      setTimeout(() => navigate('/login', { replace: true }), 650);
+      setTimeout(() => navigate('/login', { replace: true }), 320);
       return;
     }
     const isNewDay = localStorage.getItem(STORAGE_KEY) !== todayJakarta();
-    setTimeout(() => navigate(isNewDay ? '/morning' : '/', { replace: true }), 650);
+    setTimeout(() => navigate(isNewDay ? '/morning' : '/', { replace: true }), 320);
   };
 
   return (
@@ -58,8 +58,7 @@ export default function WelcomeScreen() {
         position: 'relative', overflow: 'hidden',
         cursor: 'pointer',
         opacity: exiting ? 0 : 1,
-        transform: exiting ? 'scale(0.96)' : 'scale(1)',
-        transition: 'opacity 0.65s cubic-bezier(0.16, 1, 0.3, 1), transform 0.65s cubic-bezier(0.16, 1, 0.3, 1)',
+        transition: 'opacity 0.3s ease-out',
       }}
     >
       {ORBS.map((o, i) => (

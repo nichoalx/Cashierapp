@@ -174,6 +174,38 @@ function EditMemberModal({ member, onSave, onClose }: {
   );
 }
 
+function MembersScreenSkeleton() {
+  return (
+    <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: '16px var(--app-page-gutter) 8px', gap: 12 }}>
+      <style>{`@keyframes skel-pulse { 0%,100%{opacity:.55} 50%{opacity:1} }`}</style>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ width: 60, height: 9, borderRadius: 4, background: '#e0e3ec', animation: 'skel-pulse 1.4s ease-in-out infinite' }} />
+          <div style={{ width: 100, height: 22, borderRadius: 6, background: '#e0e3ec', animation: 'skel-pulse 1.4s ease-in-out infinite' }} />
+        </div>
+        <div style={{ width: 90, height: 40, borderRadius: 11, background: '#e0e3ec', animation: 'skel-pulse 1.4s ease-in-out infinite' }} />
+      </div>
+      {/* Search */}
+      <div style={{ width: '100%', height: 44, borderRadius: 12, background: '#e0e3ec', animation: 'skel-pulse 1.4s ease-in-out infinite' }} />
+      {/* Count row */}
+      <div style={{ width: 90, height: 14, borderRadius: 5, background: '#e0e3ec', animation: 'skel-pulse 1.4s ease-in-out infinite' }} />
+      {/* Member cards */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, overflow: 'hidden' }}>
+        {[0, 1, 2, 3, 4, 5].map(i => (
+          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, background: '#e8eaf0', borderRadius: 14, padding: '12px 14px', flexShrink: 0, animation: 'skel-pulse 1.4s ease-in-out infinite', animationDelay: `${i * 60}ms` }}>
+            <div style={{ width: 42, height: 42, borderRadius: 12, background: '#dde0e8', flexShrink: 0 }} />
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 7 }}>
+              <div style={{ width: '55%', height: 13, borderRadius: 5, background: '#dde0e8' }} />
+              <div style={{ width: '35%', height: 10, borderRadius: 4, background: '#dde0e8' }} />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function MembersScreen() {
   const rawMembers = useQuery(api.members.list);
   const addMemberMutation = useMutation(api.members.add);
@@ -350,6 +382,8 @@ export default function MembersScreen() {
   const handlePhoneKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !saveDisabled) handleAdd();
   };
+
+  if (rawMembers === undefined) return <MembersScreenSkeleton />;
 
   return (
     <div

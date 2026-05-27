@@ -23,13 +23,13 @@ function ProtectedRoot() {
   return (
     <MotionConfig reducedMotion="user">
       <div style={{ flex: 1, minHeight: 0, position: 'relative', background: '#eef0f5', overflow: 'hidden', overscrollBehavior: 'none' }}>
-        <AnimatePresence mode="sync" initial={true}>
+        <AnimatePresence mode="sync" initial={false}>
           <motion.div
             key={location.pathname}
-            initial={{ opacity: 0, scale: 0.97, y: 10 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 1.01 }}
-            transition={{ duration: 0.55, ease: [0.16, 1, 0.3, 1] }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.18, ease: 'easeOut' }}
             style={{
               position: 'absolute',
               inset: 0,

@@ -517,6 +517,43 @@ function exportCSV(txs: Tx[], date: Date) {
   document.body.removeChild(a); URL.revokeObjectURL(url);
 }
 
+// ─── Skeleton ────────────────────────────────────────────────────────────────
+
+function SkelBox({ w, h, r = 8, mt = 0 }: { w?: string | number; h: number; r?: number; mt?: number }) {
+  return (
+    <div style={{
+      width: w ?? '100%', height: h, borderRadius: r,
+      background: '#e0e3ec', marginTop: mt,
+      animation: 'skel-pulse 1.4s ease-in-out infinite',
+      flexShrink: 0,
+    }} />
+  );
+}
+
+function TransactionLogSkeleton() {
+  return (
+    <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: '16px var(--app-page-gutter) 8px', gap: 0 }}>
+      <style>{`@keyframes skel-pulse { 0%,100%{opacity:.55} 50%{opacity:1} }`}</style>
+      {/* Price ticker */}
+      <SkelBox h={36} r={12} />
+      {/* Date nav */}
+      <div style={{ display: 'flex', gap: 6, marginTop: 10, marginBottom: 10 }}>
+        <SkelBox w={44} h={44} r={10} />
+        <SkelBox h={44} r={10} />
+        <SkelBox w={44} h={44} r={10} />
+      </div>
+      {/* Summary card */}
+      <SkelBox h={88} r={16} />
+      {/* Search */}
+      <SkelBox h={44} r={12} mt={12} />
+      {/* Transaction rows */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 10 }}>
+        {[76, 60, 76, 60, 60].map((h, i) => <SkelBox key={i} h={h} r={16} />)}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main screen ─────────────────────────────────────────────────────────────
 
 export default function TransactionLogScreen() {
@@ -677,6 +714,8 @@ export default function TransactionLogScreen() {
   }, [transactions]);
 
   const rawDayTotal = transactions.reduce((s, t) => s + t.total, 0);
+
+  if (rawTxs === undefined) return <TransactionLogSkeleton />;
 
   const renderTxList = () => (
     <div style={{
