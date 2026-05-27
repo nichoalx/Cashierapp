@@ -13,10 +13,11 @@ function initials(name: string) {
   return name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
 }
 
-export function MemberPickerModal({ members, onSelect, onClose }: {
+export function MemberPickerModal({ members, onSelect, onClose, isLoading = false }: {
   members: Member[];
   onSelect: (m: Member | null) => void;
   onClose: () => void;
+  isLoading?: boolean;
 }) {
   const [search, setSearch] = useState('');
   useEffect(() => {
@@ -36,6 +37,7 @@ export function MemberPickerModal({ members, onSelect, onClose }: {
           from { transform: translateY(100%); }
           to   { transform: translateY(0); }
         }
+        @keyframes skel-pulse { 0%,100%{opacity:.55} 50%{opacity:1} }
       `}</style>
       <div
         style={{ position: 'fixed', left: 0, right: 0, top: 'var(--app-visual-offset-top)', height: 'var(--app-visual-height)', zIndex: 200, background: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
@@ -88,41 +90,55 @@ export function MemberPickerModal({ members, onSelect, onClose }: {
               <span style={{ fontSize: '13px', fontWeight: 600, color: '#9a9db5' }}>Tanpa Pembeli</span>
             </button>
 
-            {filtered.length === 0 && (
-              <div style={{ textAlign: 'center', padding: '20px', color: '#b0b4c8', fontSize: '12px' }}>
-                {search ? 'Tidak ditemukan' : 'Belum ada anggota'}
-              </div>
+            {isLoading ? (
+              [0, 1, 2, 3].map(i => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: '11px', background: '#eef0f5', boxShadow: '2px 2px 6px #caccd4, -2px -2px 4px rgba(255,255,255,0.8)' }}>
+                  <div style={{ width: 36, height: 36, borderRadius: '10px', flexShrink: 0, background: '#e0e3ec', animation: `skel-pulse 1.4s ease-in-out ${i * 0.07}s infinite` }} />
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 5 }}>
+                    <div style={{ height: 12, width: `${[52, 65, 45, 70][i]}%`, borderRadius: 4, background: '#e0e3ec', animation: `skel-pulse 1.4s ease-in-out ${i * 0.07}s infinite` }} />
+                    <div style={{ height: 9, width: `${[30, 38, 25, 42][i]}%`, borderRadius: 4, background: '#e0e3ec', animation: `skel-pulse 1.4s ease-in-out ${i * 0.07 + 0.1}s infinite` }} />
+                  </div>
+                </div>
+              ))
+            ) : (
+              <>
+                {filtered.length === 0 && (
+                  <div style={{ textAlign: 'center', padding: '20px', color: '#b0b4c8', fontSize: '12px' }}>
+                    {search ? 'Tidak ditemukan' : 'Belum ada anggota'}
+                  </div>
+                )}
+                {filtered.map(m => {
+                  const color = getAvatarColor(m.id);
+                  return (
+                    <button key={m.id}
+                      onClick={() => { onSelect(m); onClose(); }}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
+                        borderRadius: '11px', border: 'none', cursor: 'pointer',
+                        background: '#eef0f5',
+                        boxShadow: '2px 2px 6px #caccd4, -2px -2px 4px rgba(255,255,255,0.8)',
+                        textAlign: 'left',
+                      }}
+                    >
+                      <div style={{
+                        width: 36, height: 36, borderRadius: '10px', flexShrink: 0,
+                        background: `${color}1a`,
+                        boxShadow: '2px 2px 5px #c8cad1, -2px -2px 5px rgba(255,255,255,0.9)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        <span style={{ fontSize: '12px', fontWeight: 800, color }}>{initials(m.name)}</span>
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: '13px', fontWeight: 700, color: '#2d3142' }}>{m.name}</div>
+                        <div style={{ fontSize: '10px', color: '#9a9db5', display: 'flex', alignItems: 'center', gap: 3 }}>
+                          <Phone size={9} color="#b0b4c8" /> {m.phone || '—'}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </>
             )}
-            {filtered.map(m => {
-              const color = getAvatarColor(m.id);
-              return (
-                <button key={m.id}
-                  onClick={() => { onSelect(m); onClose(); }}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
-                    borderRadius: '11px', border: 'none', cursor: 'pointer',
-                    background: '#eef0f5',
-                    boxShadow: '2px 2px 6px #caccd4, -2px -2px 4px rgba(255,255,255,0.8)',
-                    textAlign: 'left',
-                  }}
-                >
-                  <div style={{
-                    width: 36, height: 36, borderRadius: '10px', flexShrink: 0,
-                    background: `${color}1a`,
-                    boxShadow: '2px 2px 5px #c8cad1, -2px -2px 5px rgba(255,255,255,0.9)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  }}>
-                    <span style={{ fontSize: '12px', fontWeight: 800, color }}>{initials(m.name)}</span>
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: '13px', fontWeight: 700, color: '#2d3142' }}>{m.name}</div>
-                    <div style={{ fontSize: '10px', color: '#9a9db5', display: 'flex', alignItems: 'center', gap: 3 }}>
-                      <Phone size={9} color="#b0b4c8" /> {m.phone || '—'}
-                    </div>
-                  </div>
-                </button>
-              );
-            })}
           </div>
         </div>
       </div>

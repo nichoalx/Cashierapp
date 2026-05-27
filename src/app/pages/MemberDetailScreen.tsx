@@ -32,6 +32,49 @@ function formatPhone(raw: string): string {
   return `${d.slice(0, 4)}-${d.slice(4, 8)}-${d.slice(8)}`;
 }
 
+function MemberDetailSkeleton({ onBack }: { onBack: () => void }) {
+  const S: React.CSSProperties = { background: '#e0e3ec', animation: 'skel-pulse 1.4s ease-in-out infinite', borderRadius: 5, flexShrink: 0 };
+  return (
+    <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div style={{ flexShrink: 0, padding: '16px var(--app-page-gutter) 12px', display: 'flex', alignItems: 'center', gap: 12 }}>
+        <button onClick={onBack} style={{ width: 36, height: 36, borderRadius: 10, border: 'none', cursor: 'pointer', background: '#eef0f5', boxShadow: SHD_RAISED, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <ArrowLeft size={16} color="#4a4e69" />
+        </button>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 5 }}>
+          <div style={{ ...S, height: 9, width: '22%' }} />
+          <div style={{ ...S, height: 18, width: '48%', animationDelay: '0.07s' }} />
+        </div>
+      </div>
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '0 var(--app-page-gutter) var(--app-content-bottom)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {/* Member card */}
+        <div style={{ background: '#eef0f5', boxShadow: SHD_RAISED, borderRadius: 14, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div style={{ ...S, width: 52, height: 52, borderRadius: 14 }} />
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 7 }}>
+            <div style={{ ...S, height: 15, width: '55%', animationDelay: '0.08s' }} />
+            <div style={{ ...S, height: 11, width: '35%', animationDelay: '0.16s' }} />
+          </div>
+        </div>
+        {/* Orders */}
+        <div>
+          <div style={{ ...S, height: 9, width: '35%', marginBottom: 8 }} />
+          <div style={{ background: '#eef0f5', boxShadow: SHD_RAISED, borderRadius: 14, overflow: 'hidden' }}>
+            {[0, 1, 2].map(i => (
+              <div key={i} style={{ padding: '12px 14px', borderBottom: i < 2 ? '1px solid rgba(0,0,0,0.05)' : 'none', display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <div style={{ ...S, height: 13, width: `${[40, 55, 35][i]}%`, animationDelay: `${i * 0.07}s` }} />
+                  <div style={{ ...S, height: 11, width: `${[28, 38, 24][i]}%`, animationDelay: `${i * 0.07 + 0.1}s` }} />
+                </div>
+                <div style={{ ...S, width: 14, height: 14, borderRadius: 4, animationDelay: `${i * 0.07}s` }} />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+      <style>{`@keyframes skel-pulse { 0%,100%{opacity:.55} 50%{opacity:1} }`}</style>
+    </div>
+  );
+}
+
 export default function MemberDetailScreen() {
   const { memberId } = useParams<{ memberId: string }>();
   const navigate = useNavigate();
@@ -40,13 +83,7 @@ export default function MemberDetailScreen() {
     memberId ? { memberId: memberId as Id<'members'> } : 'skip',
   );
 
-  if (data === undefined) {
-    return (
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <span style={{ fontSize: '12px', color: '#9a9db5' }}>Memuat...</span>
-      </div>
-    );
-  }
+  if (data === undefined) return <MemberDetailSkeleton onBack={() => navigate(-1)} />;
   if (!data) {
     return (
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 }}>

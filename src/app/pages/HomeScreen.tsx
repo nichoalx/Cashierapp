@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import { X, MessageSquare, User, Check } from 'lucide-react';
+import { X, MessageSquare, User, Check, RotateCcw } from 'lucide-react';
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '../../../convex/_generated/api';
 import { Id } from '../../../convex/_generated/dataModel';
@@ -278,7 +278,7 @@ export default function HomeScreen() {
       // Kredit: show "Uang diterima?" prompt before committing
       setPayPhase('payment');
     } else {
-      // Normal: commit is deferred — show success + 5s undo window
+      // Normal: commit is deferred — show success + 3s undo window
       setPayPhase('success');
       if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
       undoTimerRef.current = setTimeout(() => {
@@ -286,7 +286,7 @@ export default function HomeScreen() {
         setPayPhase('idle');
         setPayStash(null);
         undoTimerRef.current = null;
-      }, 5000);
+      }, 3000);
     }
   }, [items, remarks, selectedMember, discountInput, debtMode, commitStash]);
 
@@ -361,6 +361,7 @@ export default function HomeScreen() {
           members={members}
           onSelect={m => setSelectedMember(m)}
           onClose={() => setShowMemberPicker(false)}
+          isLoading={rawMembers === undefined}
         />
       )}
 
@@ -462,8 +463,8 @@ export default function HomeScreen() {
                       </div>
                     )}
                     <div style={{ display: 'flex', gap: 8 }}>
-                      <button onClick={handlePayUndo} style={{ flex: 1, height: 32, borderRadius: 9, border: 'none', cursor: 'pointer', background: '#eef0f5', boxShadow: 'inset 2px 2px 5px #c8cad1, inset -2px -2px 5px #ffffff', color: '#9a9db5', fontSize: '11px', fontWeight: 600 }}>
-                        Batalkan
+                      <button onClick={handlePayUndo} aria-label="Batalkan" style={{ flex: 1, height: 32, borderRadius: 9, border: 'none', cursor: 'pointer', background: '#d4183d', boxShadow: '3px 3px 8px rgba(0,0,0,0.14), -2px -2px 6px rgba(255,255,255,0.5)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <RotateCcw size={14} strokeWidth={2.5} />
                       </button>
                       <button onClick={handlePayConfirm} style={{ flex: 2, height: 32, borderRadius: 9, border: 'none', cursor: 'pointer', background: '#52b96a', boxShadow: '3px 3px 8px rgba(0,0,0,0.14), -2px -2px 6px rgba(255,255,255,0.5)', color: '#fff', fontSize: '11px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
                         <Check size={12} /> Konfirmasi
@@ -483,12 +484,12 @@ export default function HomeScreen() {
                       </div>
                       <span style={{ fontSize: '13px', fontWeight: 700, color: '#52b96a' }}>Berhasil!</span>
                     </div>
-                    <button onClick={handlePayUndo} style={{ height: 30, padding: '0 14px', borderRadius: 8, border: 'none', cursor: 'pointer', background: '#eef0f5', boxShadow: 'inset 2px 2px 5px #c8cad1, inset -2px -2px 5px #ffffff', color: '#9a9db5', fontSize: '11px', fontWeight: 600 }}>
-                      Batal
+                    <button onClick={handlePayUndo} aria-label="Batalkan" style={{ height: 30, width: 36, borderRadius: 8, border: 'none', cursor: 'pointer', background: '#d4183d', boxShadow: '3px 3px 8px rgba(0,0,0,0.14), -2px -2px 6px rgba(255,255,255,0.5)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <RotateCcw size={13} strokeWidth={2.5} />
                     </button>
                   </div>
                   <div style={{ height: 3, background: '#e0e3ec', borderRadius: 2, overflow: 'hidden' }}>
-                    <div style={{ height: '100%', background: '#52b96a', borderRadius: 2, animation: 'undo-shrink 5s linear forwards' }} />
+                    <div style={{ height: '100%', background: '#52b96a', borderRadius: 2, animation: 'undo-shrink 3s linear forwards' }} />
                   </div>
                 </div>
               ) : (

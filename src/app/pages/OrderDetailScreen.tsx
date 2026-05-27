@@ -81,6 +81,61 @@ function RecordPaymentModal({
   );
 }
 
+function OrderDetailSkeleton({ onBack }: { onBack: () => void }) {
+  const S: React.CSSProperties = { background: '#e0e3ec', animation: 'skel-pulse 1.4s ease-in-out infinite', borderRadius: 5, flexShrink: 0 };
+  return (
+    <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div style={{ flexShrink: 0, padding: '16px var(--app-page-gutter) 12px', display: 'flex', alignItems: 'center', gap: 12 }}>
+        <button onClick={onBack} style={{ width: 36, height: 36, borderRadius: 10, border: 'none', cursor: 'pointer', background: '#eef0f5', boxShadow: SHD_RAISED, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <ArrowLeft size={16} color="#4a4e69" />
+        </button>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 5 }}>
+          <div style={{ ...S, height: 9, width: '30%' }} />
+          <div style={{ ...S, height: 18, width: '45%', animationDelay: '0.07s' }} />
+        </div>
+      </div>
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '0 var(--app-page-gutter) var(--app-content-bottom)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {/* Summary card */}
+        <div style={{ background: '#eef0f5', boxShadow: SHD_RAISED, borderRadius: 14, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {(['32%', '25%', '20%'] as const).map((lw, i) => (
+            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ ...S, height: 12, width: lw, animationDelay: `${i * 0.07}s` }} />
+              <div style={{ ...S, height: i === 2 ? 16 : 13, width: ['22%', '18%', '24%'][i], animationDelay: `${i * 0.07}s` }} />
+            </div>
+          ))}
+        </div>
+        {/* Items */}
+        <div>
+          <div style={{ ...S, height: 9, width: '18%', marginBottom: 8 }} />
+          <div style={{ background: '#eef0f5', boxShadow: SHD_RAISED, borderRadius: 14, overflow: 'hidden' }}>
+            {[0, 1].map(i => (
+              <div key={i} style={{ padding: '11px 14px', borderBottom: i === 0 ? '1px solid rgba(0,0,0,0.05)' : 'none', display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 5 }}>
+                  <div style={{ ...S, height: 13, width: ['52%', '38%'][i], animationDelay: `${i * 0.08}s` }} />
+                  <div style={{ ...S, height: 10, width: ['38%', '28%'][i], animationDelay: `${i * 0.08 + 0.08}s` }} />
+                </div>
+                <div style={{ ...S, height: 13, width: '20%', animationDelay: `${i * 0.08}s` }} />
+              </div>
+            ))}
+          </div>
+        </div>
+        {/* Payment history */}
+        <div>
+          <div style={{ ...S, height: 9, width: '36%', marginBottom: 8 }} />
+          <div style={{ background: '#eef0f5', boxShadow: SHD_RAISED, borderRadius: 14, padding: '11px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+              <div style={{ ...S, height: 12, width: 80 }} />
+              <div style={{ ...S, height: 10, width: 60, animationDelay: '0.1s' }} />
+            </div>
+            <div style={{ ...S, height: 13, width: 70 }} />
+          </div>
+        </div>
+      </div>
+      <style>{`@keyframes skel-pulse { 0%,100%{opacity:.55} 50%{opacity:1} }`}</style>
+    </div>
+  );
+}
+
 export default function OrderDetailScreen() {
   const { txId } = useParams<{ txId: string }>();
   const navigate = useNavigate();
@@ -88,13 +143,7 @@ export default function OrderDetailScreen() {
   const recordPayment = useMutation(api.payments.record);
   const [showModal, setShowModal] = useState(false);
 
-  if (detail === undefined) {
-    return (
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <span style={{ fontSize: '12px', color: '#9a9db5' }}>Memuat...</span>
-      </div>
-    );
-  }
+  if (detail === undefined) return <OrderDetailSkeleton onBack={() => navigate(-1)} />;
   if (!detail) {
     return (
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 }}>

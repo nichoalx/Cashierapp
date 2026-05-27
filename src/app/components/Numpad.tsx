@@ -201,7 +201,7 @@ export function Numpad({ value, onChange, onAddItem, onComplete, canAdd, canComp
         <NumKey label="7" onClick={() => handleDigit('7')} disabled={digitDisabled('7')} compact={compact} />
         <NumKey label="8" onClick={() => handleDigit('8')} disabled={digitDisabled('8')} compact={compact} />
         <NumKey label="9" onClick={() => handleDigit('9')} disabled={digitDisabled('9')} compact={compact} />
-        <NumKey onClick={handleBack} style={{ background: '#dde0e8' }}>
+        <NumKey onClick={handleBack} disabled={digitsDisabled} style={{ background: '#dde0e8' }}>
           <Delete size={compact ? 14 : 17} color="#8a8fa8" />
         </NumKey>
 

@@ -57,6 +57,8 @@ interface Tx {
   timestamp: Date;
   total: number;
   discount: number;
+  amountPaid: number;
+  balance: number;
   remarks?: string;
   memberId?: string;
   memberName?: string;
@@ -621,6 +623,8 @@ export default function TransactionLogScreen() {
       timestamp: new Date(tx.timestamp),
       total: tx.total,
       discount: tx.discount ?? 0,
+      amountPaid: tx.amountPaid,
+      balance: tx.balance,
       remarks: tx.remarks,
       memberId: tx.memberId as string | undefined,
       memberName: tx.memberName,
@@ -796,15 +800,26 @@ export default function TransactionLogScreen() {
                 </div>
 
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', gap: 4, marginBottom: 3, flexWrap: 'wrap' }}>
-                    {tx.items.map((item, i) => (
-                      <span key={i} style={{
-                        fontSize: '10px', fontWeight: 600, color: item.color,
-                        background: `${item.color}18`, borderRadius: '5px', padding: '1px 5px',
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                      {tx.items.map((item, i) => (
+                        <span key={i} style={{
+                          fontSize: '10px', fontWeight: 600, color: item.color,
+                          background: `${item.color}18`, borderRadius: '5px', padding: '1px 5px',
+                        }}>
+                          {item.productShortName}{item.plasticSize ? ` ${item.plasticSize}` : ''}
+                        </span>
+                      ))}
+                    </div>
+                    {tx.balance > 0 && (
+                      <span style={{
+                        fontSize: '7px', fontWeight: 700, color: '#d97706',
+                        background: 'rgba(217,119,6,0.12)', borderRadius: '5px',
+                        padding: '1px 5px', letterSpacing: '0.07em', flexShrink: 0,
                       }}>
-                        {item.productShortName}{item.plasticSize ? ` ${item.plasticSize}` : ''}
+                        KREDIT
                       </span>
-                    ))}
+                    )}
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -828,7 +843,9 @@ export default function TransactionLogScreen() {
                         </div>
                       )}
                     </div>
-                    <span style={{ fontSize: '15px', fontWeight: 700, color: '#2d3142' }}>{formatRupiah(tx.total)}</span>
+                    <span style={{ fontSize: '15px', fontWeight: 700, color: tx.balance > 0 ? '#d97706' : '#2d3142' }}>
+                      {formatRupiah(tx.total)}
+                    </span>
                   </div>
                 </div>
 
@@ -868,6 +885,24 @@ export default function TransactionLogScreen() {
                         <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 3, borderTop: '1px solid rgba(0,0,0,0.05)' }}>
                           <span style={{ fontSize: '10px', color: '#2d3142', fontWeight: 700 }}>Total</span>
                           <span style={{ fontSize: '12px', color: '#2d3142', fontWeight: 700 }}>{formatRupiah(tx.total)}</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {tx.balance > 0 && (
+                      <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px solid rgba(0,0,0,0.06)', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <div style={{ fontSize: '8px', fontWeight: 700, color: '#d97706', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 2 }}>
+                          Kredit
+                        </div>
+                        {tx.amountPaid > 0 && (
+                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <span style={{ fontSize: '10px', color: '#52b96a', fontWeight: 600 }}>Terbayar</span>
+                            <span style={{ fontSize: '11px', color: '#52b96a', fontWeight: 600 }}>{formatRupiah(tx.amountPaid)}</span>
+                          </div>
+                        )}
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ fontSize: '10px', color: '#d97706', fontWeight: 700 }}>Sisa</span>
+                          <span style={{ fontSize: '12px', color: '#d97706', fontWeight: 700 }}>{formatRupiah(tx.balance)}</span>
                         </div>
                       </div>
                     )}

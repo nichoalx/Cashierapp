@@ -120,6 +120,7 @@ export function PriceEditorModal({ onClose }: Props) {
           70%  { opacity: 1; }
           100% { opacity: 0; }
         }
+        @keyframes skel-pulse { 0%,100%{opacity:.55} 50%{opacity:1} }
         @media (prefers-reduced-motion: reduce) {
           *, *::before, *::after {
             animation-duration: 0.01ms !important;
@@ -182,8 +183,24 @@ export function PriceEditorModal({ onClose }: Props) {
           {/* Content */}
           <div className="overflow-y-auto flex-1 px-5 pb-6" style={{ scrollbarWidth: 'none' }}>
 
+            {/* ── LOADING SKELETON ── */}
+            {rawProducts === undefined && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                {[0, 1, 2, 3].map(i => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <div style={{ width: 22, height: 22, borderRadius: '50%', background: '#e0e3ec', animation: `skel-pulse 1.4s ease-in-out ${i * 0.07}s infinite`, flexShrink: 0 }} />
+                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <div style={{ height: 10, width: `${[40, 55, 35, 48][i]}%`, borderRadius: 4, background: '#e0e3ec', animation: `skel-pulse 1.4s ease-in-out ${i * 0.07}s infinite` }} />
+                      <div style={{ height: 12, width: `${[25, 30, 20, 28][i]}%`, borderRadius: 4, background: '#e0e3ec', animation: `skel-pulse 1.4s ease-in-out ${i * 0.07 + 0.07}s infinite` }} />
+                    </div>
+                    <div style={{ height: 34, width: 130, borderRadius: 10, background: '#e0e3ec', animation: `skel-pulse 1.4s ease-in-out ${i * 0.07}s infinite` }} />
+                  </div>
+                ))}
+              </div>
+            )}
+
             {/* ── KEDELAI TAB ── */}
-            {activeTab === 'soybean' && (
+            {rawProducts !== undefined && activeTab === 'soybean' && (
               <div className="flex flex-col gap-3">
                 {soybeanProducts.map(p => (
                   <div key={p._id}>
@@ -361,7 +378,7 @@ export function PriceEditorModal({ onClose }: Props) {
             )}
 
             {/* ── LAINNYA TAB ── */}
-            {activeTab === 'other' && (
+            {rawProducts !== undefined && activeTab === 'other' && (
               <div className="flex flex-col gap-3">
 
                 {/* Plastic */}

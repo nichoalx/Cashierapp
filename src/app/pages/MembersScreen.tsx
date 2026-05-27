@@ -239,7 +239,10 @@ export default function MembersScreen() {
   const [savePressed, setSavePressed] = useState(false);
   const [dupWarn, setDupWarn] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<{ id: Id<'members'>; name: string } | null>(null);
-  const [sortOrder, setSortOrder] = useState<'az' | 'newest' | 'hutang'>('az');
+  const [sortOrder, setSortOrder] = useState<'az' | 'newest' | 'hutang'>(() => {
+    const saved = localStorage.getItem('members_sort_order');
+    return saved === 'az' || saved === 'newest' || saved === 'hutang' ? saved : 'az';
+  });
   const [editingMember, setEditingMember] = useState<Member | null>(null);
   const [actionsOpen, setActionsOpen] = useState<Id<'members'> | null>(null);
 
@@ -590,7 +593,7 @@ export default function MembersScreen() {
             <React.Fragment key={s}>
               {i > 0 && <span style={{ fontSize: '11px', color: '#c0c4d0', userSelect: 'none' }}>·</span>}
               <button
-                onClick={() => setSortOrder(s)}
+                onClick={() => { setSortOrder(s); localStorage.setItem('members_sort_order', s); }}
                 aria-pressed={sortOrder === s}
                 style={{
                   fontSize: '11px',
