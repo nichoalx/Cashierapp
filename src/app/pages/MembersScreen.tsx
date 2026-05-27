@@ -393,7 +393,7 @@ export default function MembersScreen() {
       className="members-screen"
       style={{
         ...(vpHeight !== null ? { height: vpHeight, flex: 'none' } : { flex: 1 }),
-        overflow: 'hidden', display: 'flex', flexDirection: 'column',
+        overflow: 'hidden', position: 'relative', display: 'flex', flexDirection: 'column',
         padding: '16px var(--app-page-gutter) 8px', gap: 12,
       }}
     >
@@ -665,6 +665,8 @@ export default function MembersScreen() {
           margin: '0 -8px',
           padding: '4px 8px var(--app-content-bottom)',
           listStyle: 'none',
+          WebkitMaskImage: 'linear-gradient(to bottom, transparent 0px, black 14px, black 100%)',
+          maskImage: 'linear-gradient(to bottom, transparent 0px, black 14px, black 100%)',
         }}
       >
         {filtered.length === 0 ? (
@@ -813,6 +815,16 @@ export default function MembersScreen() {
           })
         )}
       </ul>
+
+      {/* Bottom gradient fade overlay */}
+      <div aria-hidden style={{
+        position: 'absolute',
+        bottom: 0, left: 0, right: 0,
+        height: 72,
+        background: 'linear-gradient(to bottom, transparent, #eef0f5)',
+        pointerEvents: 'none',
+        zIndex: 2,
+      }} />
     </div>
   );
 }

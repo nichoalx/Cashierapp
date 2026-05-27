@@ -10,6 +10,8 @@ export const create = mutation({
       quantity: v.number(),
       unitPrice: v.number(),
       totalAmount: v.number(),
+      displayName: v.optional(v.string()),
+      displayColor: v.optional(v.string()),
     })),
     remarks: v.optional(v.string()),
     memberId: v.optional(v.id("members")),
@@ -57,6 +59,8 @@ export const create = mutation({
         quantity: item.quantity,
         unitPrice: item.unitPrice,
         totalAmount: item.totalAmount,
+        displayName: item.displayName,
+        displayColor: item.displayColor,
       });
 
       // Decrement stock for this product/variant
@@ -109,12 +113,12 @@ export const listByDate = query({
           productId: item.productId,
           variantId: item.variantId,
           productName: product?.fullName ?? 'Unknown',
-          productShortName: product?.name ?? '?',
+          productShortName: item.displayName ?? product?.name ?? '?',
           quantity: item.quantity,
           unit: product?.unit ?? 'pcs',
           unitPrice: item.unitPrice,
           total: item.totalAmount,
-          color: product?.color ?? '#9a9db5',
+          color: item.displayColor ?? product?.color ?? '#9a9db5',
           plasticSize: variant?.variantValue,
         };
       }));

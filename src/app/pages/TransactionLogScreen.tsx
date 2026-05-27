@@ -100,7 +100,6 @@ function MiniCalendar({
       onClick={e => e.stopPropagation()}
       style={{
         background: '#eef0f5', borderRadius: '20px',
-        boxShadow: SHD_CALENDAR,
         padding: '16px', width: '100%', maxWidth: 300,
         animation: 'cal-modal-in 180ms cubic-bezier(0.16, 1, 0.3, 1) both',
       }}
@@ -182,47 +181,49 @@ function DateNavigator({ selectedDate, onChange }: { selectedDate: Date; onChang
     : `${MONTHS[selectedDate.getMonth()]} ${selectedDate.getDate()}, ${selectedDate.getFullYear()}`;
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-      <button
-        aria-label="Hari sebelumnya"
-        onClick={prevDay}
-        style={{
-          background: '#eef0f5', boxShadow: SHD_RAISED_STD,
-          border: 'none', borderRadius: '10px', cursor: 'pointer',
-          width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-        }}
-      >
-        <ChevronLeft size={15} color="#9a9db5" />
-      </button>
+    <>
+      <div style={{
+        display: 'flex', alignItems: 'center',
+        background: '#eef0f5',
+        boxShadow: calOpen ? SHD_RECESSED : SHD_RAISED_STD,
+        borderRadius: '22px', height: 44, overflow: 'hidden',
+        transition: 'box-shadow 0.15s',
+      }}>
+        <button
+          aria-label="Hari sebelumnya"
+          onClick={prevDay}
+          style={{
+            background: 'transparent', border: 'none', cursor: 'pointer',
+            width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+          }}
+        >
+          <ChevronLeft size={15} color="#9a9db5" />
+        </button>
 
-      <button
-        aria-label="Pilih tanggal"
-        aria-expanded={calOpen}
-        onClick={() => setCalOpen(o => !o)}
-        style={{
-          flex: 1,
-          background: '#eef0f5',
-          boxShadow: calOpen ? SHD_RECESSED : SHD_RAISED_STD,
-          border: 'none', borderRadius: '10px', cursor: 'pointer',
-          padding: '8px 12px',
-          fontSize: '13px', fontWeight: 700, color: '#2d3142',
-          transition: 'box-shadow 0.15s',
-        }}
-      >
-        {label}
-      </button>
+        <button
+          aria-label="Pilih tanggal"
+          aria-expanded={calOpen}
+          onClick={() => setCalOpen(o => !o)}
+          style={{
+            flex: 1, background: 'transparent', border: 'none', cursor: 'pointer',
+            padding: '0 4px', height: 44,
+            fontSize: '13px', fontWeight: 700, color: '#2d3142',
+          }}
+        >
+          {label}
+        </button>
 
-      <button
-        aria-label="Hari berikutnya"
-        onClick={nextDay}
-        style={{
-          background: '#eef0f5', boxShadow: SHD_RAISED_STD,
-          border: 'none', borderRadius: '10px', cursor: 'pointer',
-          width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-        }}
-      >
-        <ChevronRight size={15} color="#9a9db5" />
-      </button>
+        <button
+          aria-label="Hari berikutnya"
+          onClick={nextDay}
+          style={{
+            background: 'transparent', border: 'none', cursor: 'pointer',
+            width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+          }}
+        >
+          <ChevronRight size={15} color="#9a9db5" />
+        </button>
+      </div>
 
       {calOpen && (
         <MiniCalendar
@@ -231,7 +232,7 @@ function DateNavigator({ selectedDate, onChange }: { selectedDate: Date; onChang
           onClose={() => setCalOpen(false)}
         />
       )}
-    </div>
+    </>
   );
 }
 
@@ -532,22 +533,24 @@ function SkelBox({ w, h, r = 8, mt = 0 }: { w?: string | number; h: number; r?: 
   );
 }
 
+
 function TransactionLogSkeleton() {
   return (
     <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: '16px var(--app-page-gutter) 8px', gap: 0 }}>
       <style>{`@keyframes skel-pulse { 0%,100%{opacity:.55} 50%{opacity:1} }`}</style>
+
       {/* Price ticker */}
       <SkelBox h={36} r={12} />
+
       {/* Date nav */}
-      <div style={{ display: 'flex', gap: 6, marginTop: 10, marginBottom: 10 }}>
-        <SkelBox w={44} h={44} r={10} />
-        <SkelBox h={44} r={10} />
-        <SkelBox w={44} h={44} r={10} />
-      </div>
-      {/* Summary card */}
-      <SkelBox h={88} r={16} />
+      <SkelBox h={44} r={22} mt={10} />
+
+      {/* Summary carousel */}
+      <SkelBox h={104} r={16} mt={10} />
+
       {/* Search */}
-      <SkelBox h={44} r={12} mt={12} />
+      <SkelBox h={44} r={12} mt={20} />
+
       {/* Transaction rows */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 10 }}>
         {[76, 60, 76, 60, 60].map((h, i) => <SkelBox key={i} h={h} r={16} />)}
@@ -570,6 +573,7 @@ export default function TransactionLogScreen() {
   const [activeFilters, setActiveFilters]     = useState<Set<'soybean' | 'plastic' | 'other'>>(new Set());
   const [filterOpen, setFilterOpen]           = useState(false);
   const [filterBtnPressed, setFilterBtnPressed] = useState(false);
+  const hasLoadedOnce = useRef(false);
   const searchRef = useRef<HTMLDivElement>(null);
   const savedIdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dragRef  = useRef<{ start: number; delta: number } | null>(null);
@@ -719,7 +723,9 @@ export default function TransactionLogScreen() {
 
   const rawDayTotal = transactions.reduce((s, t) => s + t.total, 0);
 
-  if (rawTxs === undefined) return <TransactionLogSkeleton />;
+  if (rawTxs !== undefined) hasLoadedOnce.current = true;
+  if (rawTxs === undefined && !hasLoadedOnce.current) return <TransactionLogSkeleton />;
+  const isDateLoading = rawTxs === undefined;
 
   const renderTxList = () => (
     <div style={{
@@ -736,6 +742,8 @@ export default function TransactionLogScreen() {
       gap: 12,
       margin: '0 -8px',
       padding: '4px 8px var(--app-content-bottom)',
+      WebkitMaskImage: 'linear-gradient(to bottom, transparent 0px, black 14px, black 100%)',
+      maskImage: 'linear-gradient(to bottom, transparent 0px, black 14px, black 100%)',
     }}>
       {filteredTxs.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '32px 20px', flexShrink: 0 }}>
@@ -996,7 +1004,7 @@ export default function TransactionLogScreen() {
   );
 
   return (
-    <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: '16px var(--app-page-gutter) 8px', gap: 0 }}>
+    <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', position: 'relative', display: 'flex', flexDirection: 'column', padding: '16px var(--app-page-gutter) 8px', gap: 0 }}>
       <style>{`
         @keyframes cal-modal-in {
           from { opacity: 0; transform: scale(0.94); }
@@ -1012,6 +1020,10 @@ export default function TransactionLogScreen() {
         }
         @keyframes sheets-sync-spin {
           to { transform: rotate(360deg); }
+        }
+        @keyframes skel-pulse {
+          0%, 100% { opacity: .55; }
+          50% { opacity: 1; }
         }
         @media (prefers-reduced-motion: reduce) {
           * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
@@ -1056,6 +1068,35 @@ export default function TransactionLogScreen() {
       </div>
 
       {/* Day Summary Carousel */}
+      {isDateLoading ? (
+        <div style={{
+          background: '#eef0f5', boxShadow: SHD_RAISED_STRONG,
+          borderRadius: '16px', marginBottom: 20, flexShrink: 0,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'stretch', padding: '12px 0 10px' }}>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0 14px', gap: 8 }}>
+              <SkelBox h={9} r={5} w="48%" />
+              <SkelBox h={20} r={6} w="72%" />
+            </div>
+            <div style={{ width: 1, background: 'rgba(200,202,209,0.6)', flexShrink: 0, margin: '8px 0' }} />
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', gap: 14, padding: '0 12px' }}>
+              <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5 }}>
+                <SkelBox h={8} r={4} w="55%" />
+                <SkelBox h={14} r={5} w="38%" />
+              </div>
+              <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5 }}>
+                <SkelBox h={8} r={4} w="55%" />
+                <SkelBox h={14} r={5} w="38%" />
+              </div>
+            </div>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: 5, paddingBottom: 6 }}>
+            {[0,1,2].map(i => (
+              <div key={i} style={{ width: i === 0 ? 16 : 5, height: 5, borderRadius: 3, background: '#e0e3ec', animation: 'skel-pulse 1.4s ease-in-out infinite' }} />
+            ))}
+          </div>
+        </div>
+      ) : (
       <div
         style={{
           background: '#eef0f5', boxShadow: SHD_RAISED_STRONG,
@@ -1234,6 +1275,7 @@ export default function TransactionLogScreen() {
           ))}
         </div>
       </div>
+      )}
 
       {/* Search + Filter */}
       <div ref={searchRef} style={{ position: 'relative', marginBottom: 8 }}>
@@ -1330,7 +1372,21 @@ export default function TransactionLogScreen() {
       </div>
 
       {/* Transaction List */}
-      {renderTxList()}
+      {isDateLoading ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 4 }}>
+          {[76, 60, 76, 60, 60].map((h, i) => <SkelBox key={i} h={h} r={16} />)}
+        </div>
+      ) : renderTxList()}
+
+      {/* Bottom gradient fade overlay */}
+      <div aria-hidden style={{
+        position: 'absolute',
+        bottom: 0, left: 0, right: 0,
+        height: 72,
+        background: 'linear-gradient(to bottom, transparent, #eef0f5)',
+        pointerEvents: 'none',
+        zIndex: 2,
+      }} />
     </div>
   );
 }

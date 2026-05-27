@@ -77,8 +77,10 @@ export default defineSchema({
     productId: v.id("products"),
     variantId: v.optional(v.id("productVariants")),
     quantity: v.number(),
-    unitPrice: v.number(),   // Price snapshot at time of sale — never recomputed
-    totalAmount: v.number(), // quantity * unitPrice, denormalized for convenience
+    unitPrice: v.number(),     // Price snapshot at time of sale — never recomputed
+    totalAmount: v.number(),   // quantity * unitPrice, denormalized for convenience
+    displayName: v.optional(v.string()),  // Overrides product.name in UI (e.g. "E" for eceran)
+    displayColor: v.optional(v.string()), // Overrides product.color in UI (e.g. purple for eceran)
   }).index("by_transactionId", ["transactionId"]),
 
   // ─── Payments (debt repayment records) ───────────────────────────────────────

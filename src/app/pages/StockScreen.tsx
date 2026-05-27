@@ -118,7 +118,6 @@ function StockCalendar({
       onClick={e => e.stopPropagation()}
       style={{
         background: '#eef0f5', borderRadius: '20px',
-        boxShadow: SHD_CALENDAR,
         padding: '16px', width: '100%', maxWidth: 300,
         animation: 'cal-modal-in 180ms cubic-bezier(0.16, 1, 0.3, 1) both',
       }}
@@ -184,19 +183,17 @@ function StockCalendar({
 
 // ─────────── Date Navigator for Additions ───────────
 function AdditionDateNav({
-  selectedDate, onChange, additionDates,
+  selectedDate, calOpen, onToggleCal,
 }: {
   selectedDate: Date | null;
-  onChange: (d: Date | null) => void;
-  additionDates: Date[];
+  calOpen: boolean;
+  onToggleCal: () => void;
 }) {
-  const [calOpen, setCalOpen] = useState(false);
-
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
       <div style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Riwayat Tambah Stok</div>
       <button
-        onClick={() => setCalOpen(o => !o)}
+        onClick={onToggleCal}
         style={{
           marginLeft: 'auto',
           background: '#eef0f5',
@@ -213,15 +210,6 @@ function AdditionDateNav({
           ? `${MONTHS[selectedDate.getMonth()].slice(0, 3)} ${selectedDate.getDate()}`
           : 'Pilih Tanggal'}
       </button>
-
-      {calOpen && (
-        <StockCalendar
-          selectedDate={selectedDate}
-          onSelect={onChange}
-          onClose={() => setCalOpen(false)}
-          additionDates={additionDates}
-        />
-      )}
     </div>
   );
 }
@@ -680,6 +668,7 @@ export default function StockScreen() {
   const [showPriceEditor, setShowPriceEditor] = useState(false);
   const [showAddStock, setShowAddStock]       = useState(false);
   const [historyDate, setHistoryDate]         = useState<Date | null>(null);
+  const [historyCalOpen, setHistoryCalOpen]   = useState(false);
   const [undoState, setUndoState]             = useState<{ result: AdditionResult; startedAt: number } | null>(null);
   const [syncState, setSyncState]             = useState<'idle' | 'syncing' | 'done' | 'error'>('idle');
   const [syncError, setSyncError]             = useState<string | null>(null);
@@ -788,13 +777,21 @@ export default function StockScreen() {
   if (rawStock === undefined) return <StockScreenSkeleton />;
 
   return (
-    <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: '14px var(--app-page-gutter) 8px', gap: 10 }}>
+    <div style={{ flex: 1, overflow: 'hidden', position: 'relative', display: 'flex', flexDirection: 'column', padding: '14px var(--app-page-gutter) 8px', gap: 10 }}>
       {showPriceEditor && <PriceEditorModal onClose={() => setShowPriceEditor(false)} />}
       {showAddStock && (
         <AddStockModal
           stockItems={stockItems}
           onClose={() => setShowAddStock(false)}
           onAdded={result => { setShowAddStock(false); handleStockAdded(result); }}
+        />
+      )}
+      {historyCalOpen && (
+        <StockCalendar
+          selectedDate={historyDate}
+          onSelect={setHistoryDate}
+          onClose={() => setHistoryCalOpen(false)}
+          additionDates={additionDates}
         />
       )}
       {undoState && <UndoToast result={undoState.result} startedAt={undoState.startedAt} onUndo={handleUndo} />}
@@ -880,6 +877,8 @@ export default function StockScreen() {
         gap: 12,
         margin: '0 -8px',
         padding: '4px 8px var(--app-content-bottom)',
+        WebkitMaskImage: 'linear-gradient(to bottom, transparent 0px, black 14px, black 100%)',
+        maskImage: 'linear-gradient(to bottom, transparent 0px, black 14px, black 100%)',
       }}>
         <div style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5', letterSpacing: '0.08em', textTransform: 'uppercase', paddingLeft: 2, flexShrink: 0 }}>Kedelai</div>
         {soybeanStock.map(s => <StockCard key={s.id} s={s} maxQty={maxQty(s)} />)}
@@ -894,13 +893,11 @@ export default function StockScreen() {
           borderRadius: '14px', padding: '12px 14px',
           flexShrink: 0,
         }}>
-          <div style={{ position: 'relative' }}>
-            <AdditionDateNav
-              selectedDate={historyDate}
-              onChange={setHistoryDate}
-              additionDates={additionDates}
-            />
-          </div>
+          <AdditionDateNav
+            selectedDate={historyDate}
+            calOpen={historyCalOpen}
+            onToggleCal={() => setHistoryCalOpen(o => !o)}
+          />
 
           <div style={{ marginTop: 10 }}>
             {filteredAdditions.length === 0 ? (
@@ -938,6 +935,16 @@ export default function StockScreen() {
           </div>
         </div>
       </div>
+
+      {/* Bottom gradient fade overlay */}
+      <div aria-hidden style={{
+        position: 'absolute',
+        bottom: 0, left: 0, right: 0,
+        height: 72,
+        background: 'linear-gradient(to bottom, transparent, #eef0f5)',
+        pointerEvents: 'none',
+        zIndex: 2,
+      }} />
 
       <style>{`
         @keyframes sheet-slide-up {
