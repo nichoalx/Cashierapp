@@ -238,14 +238,17 @@ function DateNavigator({ selectedDate, onChange }: { selectedDate: Date; onChang
 
 // ─── EditModal ───────────────────────────────────────────────────────────────
 
+interface PlasticVariant { variantId: string; label: string; }
+
 interface EditModalProps {
   transaction: Tx;
   members: Member[];
+  plasticVariants: PlasticVariant[];
   onClose: () => void;
   onSave: (items: TransactionItem[], remarks: string, discount: number, memberId?: string, memberName?: string) => void;
 }
 
-function EditModal({ transaction, members, onClose, onSave }: EditModalProps) {
+function EditModal({ transaction, members, plasticVariants, onClose, onSave }: EditModalProps) {
   const [items, setItems]           = useState<TransactionItem[]>(transaction.items.map(i => ({ ...i })));
   const [editRemarks, setEditRemarks] = useState(transaction.remarks ?? '');
   const [editDiscount, setEditDiscount] = useState(transaction.discount > 0 ? String(transaction.discount) : '');
@@ -272,6 +275,10 @@ function EditModal({ transaction, members, onClose, onSave }: EditModalProps) {
     setItems(prev => prev.map(i => i.id === id ? { ...i, quantity: qty, total: qty * i.unitPrice } : i));
   };
   const removeItem = (id: string) => setItems(prev => prev.filter(i => i.id !== id));
+  const updateVariant = (id: string, variantId: string) => {
+    const v = plasticVariants.find(pv => pv.variantId === variantId);
+    setItems(prev => prev.map(i => i.id === id ? { ...i, variantId, plasticSize: v?.label } : i));
+  };
   const newSubtotal = items.reduce((s, i) => s + i.total, 0);
   const parsedDiscount = Math.max(0, Math.min(parseFloat(editDiscount) || 0, newSubtotal));
   const newTotal   = newSubtotal - parsedDiscount;
@@ -332,35 +339,59 @@ function EditModal({ transaction, members, onClose, onSave }: EditModalProps) {
 
           <div style={{ flex: 1, overflow: 'auto', padding: '0 20px' }}>
             {items.map(item => (
-              <div key={item.id} style={{
-                display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8,
-                background: '#eef0f5', boxShadow: SHD_RECESSED,
-                borderRadius: '12px', padding: '10px 12px',
-              }}>
-                <div style={{ width: 8, height: 8, borderRadius: '50%', background: item.color, flexShrink: 0 }} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: '13px', fontWeight: 600, color: '#2d3142' }}>{item.productName}</div>
-                  <div style={{ fontSize: '11px', color: '#9a9db5' }}>{formatRupiah(item.unitPrice)}/{item.unit}</div>
+              <div key={item.id} style={{ marginBottom: 8 }}>
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  background: '#eef0f5', boxShadow: SHD_RECESSED,
+                  borderRadius: '12px', padding: '10px 12px',
+                }}>
+                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: item.color, flexShrink: 0 }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: '13px', fontWeight: 600, color: '#2d3142' }}>{item.productName}</div>
+                    <div style={{ fontSize: '11px', color: '#9a9db5' }}>{formatRupiah(item.unitPrice)}/{item.unit}</div>
+                  </div>
+                  <input
+                    type="number"
+                    defaultValue={item.quantity}
+                    onChange={e => updateQty(item.id, e.target.value)}
+                    style={{
+                      width: 72, textAlign: 'right', background: '#eef0f5',
+                      boxShadow: 'inset 2px 2px 5px #c0c3ca, inset -2px -2px 5px #f8f9fc',
+                      borderRadius: '8px', border: 'none', outline: 'none',
+                      padding: '5px 8px', fontSize: '14px', color: '#2d3142',
+                    }}
+                  />
+                  <span style={{ fontSize: '11px', color: '#9a9db5', width: 20 }}>{item.unit}</span>
+                  <button
+                    aria-label={`Hapus ${item.productName}`}
+                    onClick={() => removeItem(item.id)}
+                    style={{ background: 'transparent', border: 'none', color: '#d4183d', cursor: 'pointer', width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                  >
+                    <Trash2 size={14} />
+                  </button>
                 </div>
-                <input
-                  type="number"
-                  defaultValue={item.quantity}
-                  onChange={e => updateQty(item.id, e.target.value)}
-                  style={{
-                    width: 72, textAlign: 'right', background: '#eef0f5',
-                    boxShadow: 'inset 2px 2px 5px #c0c3ca, inset -2px -2px 5px #f8f9fc',
-                    borderRadius: '8px', border: 'none', outline: 'none',
-                    padding: '5px 8px', fontSize: '14px', color: '#2d3142',
-                  }}
-                />
-                <span style={{ fontSize: '11px', color: '#9a9db5', width: 20 }}>{item.unit}</span>
-                <button
-                  aria-label={`Hapus ${item.productName}`}
-                  onClick={() => removeItem(item.id)}
-                  style={{ background: 'transparent', border: 'none', color: '#d4183d', cursor: 'pointer', width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                >
-                  <Trash2 size={14} />
-                </button>
+                {item.plasticSize !== undefined && plasticVariants.length > 0 && (
+                  <div style={{ position: 'relative', marginTop: 4 }}>
+                    <select
+                      value={item.variantId ?? ''}
+                      onChange={e => updateVariant(item.id, e.target.value)}
+                      style={{
+                        width: '100%', appearance: 'none', WebkitAppearance: 'none',
+                        background: '#eef0f5',
+                        boxShadow: 'inset 2px 2px 5px #c0c3ca, inset -2px -2px 5px #f8f9fc',
+                        borderRadius: '8px', border: 'none', outline: 'none',
+                        padding: '7px 28px 7px 12px',
+                        fontSize: '12px', fontWeight: 600, color: '#2d3142',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {plasticVariants.map(pv => (
+                        <option key={pv.variantId} value={pv.variantId}>{pv.label}</option>
+                      ))}
+                    </select>
+                    <ChevronDown size={12} color="#9a9db5" style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+                  </div>
+                )}
               </div>
             ))}
 
@@ -580,10 +611,14 @@ export default function TransactionLogScreen() {
   const trackRef = useRef<HTMLDivElement>(null);
   const [summarySlide, setSummarySlide] = useState(0);
   const [savedId, setSavedId]           = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; orderNumber: number } | null>(null);
+  const deleteTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingDeleteRef = useRef<{ id: string; orderNumber: number } | null>(null);
 
   // ── Convex hooks ──────────────────────────────────────────────────────────
   const rawMembers = useQuery(api.members.list);
   const rawTxs     = useQuery(api.transactions.listByDate, { date: toDateStr(selectedDate) });
+  const rawStock   = useQuery(api.stock.list);
   const updateTx   = useMutation(api.transactions.update);
   const removeTx   = useMutation(api.transactions.remove);
   const syncAll    = useAction(api.sheetsSync.syncAll);
@@ -618,6 +653,19 @@ export default function TransactionLogScreen() {
     })),
     [rawMembers]
   );
+
+  const plasticVariants = useMemo(() => {
+    if (!rawStock) return [];
+    return rawStock
+      .filter(s => s.variantId)
+      .map(s => ({ variantId: s.variantId as string, label: s.productName.replace(/^Plastik\s+/i, '') }))
+      .sort((a, b) => {
+        const parse = (label: string) => { const m = label.match(/(\d+)[×xX](\d+)/); return m ? [parseInt(m[1]), parseInt(m[2])] : [0, 0]; };
+        const [a1, a2] = parse(a.label);
+        const [b1, b2] = parse(b.label);
+        return a1 !== b1 ? a1 - b1 : a2 - b2;
+      });
+  }, [rawStock]);
 
   const transactions: Tx[] = useMemo(() => {
     if (!rawTxs) return [];
@@ -662,6 +710,20 @@ export default function TransactionLogScreen() {
     return () => { if (savedIdTimerRef.current) clearTimeout(savedIdTimerRef.current); };
   }, []);
 
+  useEffect(() => { pendingDeleteRef.current = pendingDelete; }, [pendingDelete]);
+
+  useEffect(() => {
+    return () => {
+      if (deleteTimerRef.current) clearTimeout(deleteTimerRef.current);
+      if (pendingDeleteRef.current) removeTx({ txId: pendingDeleteRef.current.id as Id<'transactions'> }).catch(console.error);
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleUndoDelete = () => {
+    if (deleteTimerRef.current) { clearTimeout(deleteTimerRef.current); deleteTimerRef.current = null; }
+    setPendingDelete(null);
+  };
+
   useEffect(() => {
     if (!filterOpen) return;
     const mouseHandler = (e: MouseEvent) => {
@@ -677,7 +739,9 @@ export default function TransactionLogScreen() {
   }, [filterOpen]);
 
   const filteredTxs = useMemo(() => {
-    let list = transactions;
+    let list = pendingDelete
+      ? transactions.filter(t => t.id !== pendingDelete.id)
+      : transactions;
     if (activeFilters.size > 0) {
       list = list.filter(t => {
         if (activeFilters.has('soybean') && t.items.some(i => i.unit === 'kg')) return true;
@@ -701,7 +765,7 @@ export default function TransactionLogScreen() {
       });
     }
     return list;
-  }, [transactions, activeFilters, searchQuery]);
+  }, [transactions, activeFilters, searchQuery, pendingDelete]);
 
   const summaryStats = useMemo(() => {
     const allItems = transactions.flatMap(t => t.items);
@@ -939,7 +1003,17 @@ export default function TransactionLogScreen() {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            removeTx({ txId: tx.id as Id<'transactions'> }).catch(console.error);
+                            if (pendingDeleteRef.current && deleteTimerRef.current) {
+                              clearTimeout(deleteTimerRef.current);
+                              removeTx({ txId: pendingDeleteRef.current.id as Id<'transactions'> }).catch(console.error);
+                            }
+                            const { id, orderNumber } = tx;
+                            setPendingDelete({ id, orderNumber });
+                            deleteTimerRef.current = setTimeout(() => {
+                              removeTx({ txId: id as Id<'transactions'> }).catch(console.error);
+                              setPendingDelete(null);
+                              deleteTimerRef.current = null;
+                            }, 5000);
                             setDeleteConfirm(null);
                             setExpandedId(null);
                           }}
@@ -1025,6 +1099,10 @@ export default function TransactionLogScreen() {
           0%, 100% { opacity: .55; }
           50% { opacity: 1; }
         }
+        @keyframes toast-in {
+          from { opacity: 0; transform: translateY(4px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
         @media (prefers-reduced-motion: reduce) {
           * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
         }
@@ -1034,6 +1112,7 @@ export default function TransactionLogScreen() {
         <EditModal
           transaction={editingTx}
           members={members}
+          plasticVariants={plasticVariants}
           onClose={() => setEditingTx(null)}
           onSave={(items, remarks, discount, memberId) => {
             const originalIds = new Set(editingTx.items.map(i => i.id));
@@ -1045,6 +1124,7 @@ export default function TransactionLogScreen() {
                 id: i.id as Id<'transactionItems'>,
                 quantity: i.quantity,
                 totalAmount: i.total,
+                variantId: i.variantId as Id<'productVariants'> | undefined,
               })),
               removedItemIds: removedItemIds as Id<'transactionItems'>[],
               remarks: remarks || undefined,
@@ -1370,6 +1450,26 @@ export default function TransactionLogScreen() {
           </div>
         )}
       </div>
+
+      {/* Soft-delete undo toast */}
+      {pendingDelete && (
+        <div
+          aria-live="polite"
+          aria-atomic="true"
+          style={{ background: '#eef0f5', boxShadow: SHD_RAISED_STD, borderRadius: 12, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0, animation: 'toast-in 180ms cubic-bezier(0.16,1,0.3,1) both' }}
+        >
+          <Trash2 size={13} color="#c0c4d0" style={{ flexShrink: 0 }} />
+          <span style={{ flex: 1, fontSize: '12px', color: '#9a9db5', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            Order #{pendingDelete.orderNumber} dihapus
+          </span>
+          <button
+            onClick={handleUndoDelete}
+            style={{ height: 40, padding: '0 14px', borderRadius: 11, border: 'none', cursor: 'pointer', background: '#eef0f5', boxShadow: SHD_RAISED_STD, color: '#4a90d9', fontSize: '12px', fontWeight: 700, flexShrink: 0 }}
+          >
+            Urungkan
+          </button>
+        </div>
+      )}
 
       {/* Transaction List */}
       {isDateLoading ? (

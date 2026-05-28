@@ -31,7 +31,10 @@ export const list = query({
       const profileImageUrl = m.profileImageId
         ? await ctx.storage.getUrl(m.profileImageId)
         : null;
-      return { ...m, outstanding, profileImageUrl: profileImageUrl ?? undefined };
+      const lastVisitDate = txs.length > 0
+        ? txs.reduce((a, b) => a.timestamp > b.timestamp ? a : b).date
+        : undefined;
+      return { ...m, outstanding, visitCount: txs.length, lastVisitDate, profileImageUrl: profileImageUrl ?? undefined };
     }));
 
     return withBalances;
@@ -133,6 +136,11 @@ export const remove = mutation({
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (!userId) throw new Error("Unauthorized");
+    const hasTx = await ctx.db
+      .query("transactions")
+      .withIndex("by_memberId", q => q.eq("memberId", args.memberId))
+      .first();
+    if (hasTx) throw new Error("Anggota memiliki riwayat transaksi.");
     await ctx.db.delete(args.memberId);
   },
 });

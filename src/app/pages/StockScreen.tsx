@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { Plus, X, ChevronLeft, ChevronRight, ChevronDown, Calendar, FileSpreadsheet, Check } from 'lucide-react';
+import { Plus, X, ChevronLeft, ChevronRight, ChevronDown, Calendar, FileSpreadsheet, Check, Pencil } from 'lucide-react';
 import { useQuery, useMutation, useAction } from 'convex/react';
 import { api } from '../../../convex/_generated/api';
 import { Id } from '../../../convex/_generated/dataModel';
@@ -454,33 +454,133 @@ function AddStockModal({
   );
 }
 
+// ─────────── Set Quantity Modal ───────────
+function SetQuantityModal({ s, onClose, onConfirm }: { s: StockRow; onClose: () => void; onConfirm: (qty: number) => void }) {
+  const [val, setVal] = useState(s.quantity % 1 === 0 ? String(s.quantity) : s.quantity.toFixed(2));
+  const [confirmPressed, setConfirmPressed] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setTimeout(() => { inputRef.current?.focus(); inputRef.current?.select(); }, 80);
+  }, []);
+
+  const parsed  = parseFloat(val);
+  const canSave = !isNaN(parsed) && parsed >= 0;
+  const diff    = canSave ? parsed - s.quantity : null;
+
+  return (
+    <div
+      className="fixed z-50 flex items-end justify-center"
+      style={{ left: 0, right: 0, top: 'var(--app-visual-offset-top)', height: 'var(--app-visual-height)', background: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(4px)' }}
+      onClick={onClose}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: '#eef0f5', boxShadow: '0 -8px 30px rgba(0,0,0,0.12)',
+          borderRadius: '24px 24px 0 0', width: '100%', maxWidth: 430,
+          padding: '20px 20px 32px',
+          animation: 'sheet-slide-up 280ms cubic-bezier(0.16, 1, 0.3, 1) both',
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+          <div>
+            <div style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Koreksi Stok</div>
+            <h3 style={{ margin: '2px 0 0', color: '#2d3142', fontSize: '17px', fontWeight: 700 }}>{s.productName}</h3>
+          </div>
+          <button onClick={onClose} style={{ background: '#eef0f5', boxShadow: SHD_RAISED_STD, border: 'none', borderRadius: '50%', width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+            <X size={16} color="#9a9db5" />
+          </button>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {/* Current → new preview */}
+          <div style={{ background: '#eef0f5', boxShadow: SHD_RECESSED, borderRadius: '12px', padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '12px', color: '#9a9db5' }}>Saat ini</span>
+            <span style={{ fontSize: '14px', fontWeight: 700, color: '#2d3142' }}>
+              {s.quantity % 1 === 0 ? s.quantity : s.quantity.toFixed(1)} {s.unit}
+            </span>
+          </div>
+
+          <div>
+            <div style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5', marginBottom: 8, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+              Jumlah Baru ({s.unit})
+            </div>
+            <input
+              ref={inputRef}
+              type="number"
+              inputMode="decimal"
+              min={0}
+              step="any"
+              value={val}
+              onChange={e => setVal(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && canSave) { onConfirm(parsed); onClose(); } if (e.key === 'Escape') onClose(); }}
+              style={{
+                width: '100%', boxSizing: 'border-box',
+                background: '#eef0f5', boxShadow: SHD_RECESSED,
+                borderRadius: '10px', border: 'none', outline: 'none',
+                padding: '11px 14px', fontSize: '22px', fontWeight: 700, color: '#2d3142',
+              }}
+            />
+          </div>
+
+          {canSave && diff !== null && diff !== 0 && (
+            <div style={{ background: '#eef0f5', boxShadow: SHD_RECESSED, borderRadius: '10px', padding: '8px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '12px', color: '#9a9db5' }}>Perubahan</span>
+              <span style={{ fontSize: '13px', fontWeight: 700, color: diff > 0 ? '#52b96a' : '#d4183d' }}>
+                {diff > 0 ? '+' : ''}{diff % 1 === 0 ? diff : diff.toFixed(1)} {s.unit}
+              </span>
+            </div>
+          )}
+
+          <button
+            disabled={!canSave}
+            onPointerDown={() => canSave && setConfirmPressed(true)}
+            onPointerUp={() => setConfirmPressed(false)}
+            onPointerLeave={() => setConfirmPressed(false)}
+            onClick={() => { if (canSave) { onConfirm(parsed); onClose(); } }}
+            style={{
+              height: 50, borderRadius: '14px', border: 'none',
+              cursor: canSave ? 'pointer' : 'default',
+              background: canSave ? '#4a90d9' : '#a8acbe',
+              opacity: canSave ? 1 : 0.55,
+              color: '#fff', fontWeight: 700, fontSize: '14px',
+              boxShadow: !canSave ? 'none' : confirmPressed ? SHD_ACTION_PRESS : SHD_ACTION_RAISED,
+              transform: confirmPressed && canSave ? 'scale(0.97)' : 'scale(1)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+              transition: 'box-shadow 0.07s, transform 0.07s, opacity 0.15s',
+            }}
+          >
+            <Check size={16} /> Simpan
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─────────── Stock Card ───────────
-function StockCard({ s, maxQty }: { s: StockRow; maxQty: number }) {
+function StockCard({ s, maxQty, onEdit }: { s: StockRow; maxQty: number; onEdit: (s: StockRow) => void }) {
   const critical = s.minThreshold;
   const low      = s.minThreshold * 3;
+
   return (
-    <div style={{
-      background: '#eef0f5',
-      boxShadow: SHD_RAISED_LIST,
-      borderRadius: '14px', padding: '12px 14px',
-      flexShrink: 0,
-    }}>
+    <div style={{ background: '#eef0f5', boxShadow: SHD_RAISED_LIST, borderRadius: '14px', padding: '12px 14px', flexShrink: 0 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <div style={{
-          width: 38, height: 38, borderRadius: '10px', background: '#eef0f5',
-          boxShadow: SHD_RECESSED,
-          display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-        }}>
+        <div style={{ width: 38, height: 38, borderRadius: '10px', background: '#eef0f5', boxShadow: SHD_RECESSED, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
           <span style={{ fontSize: '12px', fontWeight: 700, color: s.color }}>{s.productShortName.slice(0, 2).toUpperCase()}</span>
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: '13px', fontWeight: 700, color: '#2d3142' }}>{s.productName}</span>
-            <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
               <span style={{ fontSize: '20px', fontWeight: 700, color: '#2d3142' }}>
                 {s.quantity % 1 === 0 ? s.quantity : s.quantity.toFixed(1)}
               </span>
-              <span style={{ fontSize: '10px', color: '#9a9db5', marginLeft: 3 }}>{s.unit}</span>
+              <button onClick={() => onEdit(s)} aria-label="Edit kuantitas" style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px 2px', display: 'flex', alignItems: 'center' }}>
+                <Pencil size={11} color="#c0c4d0" />
+              </button>
+              <span style={{ fontSize: '10px', color: '#9a9db5', marginLeft: 1 }}>{s.unit}</span>
             </div>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 2 }}>
@@ -494,8 +594,25 @@ function StockCard({ s, maxQty }: { s: StockRow; maxQty: number }) {
   );
 }
 
+// ─────────── Plastic Sub-Row ───────────
+function PlasticSubRow({ s, isLast, onEdit }: { s: StockRow; isLast: boolean; onEdit: (s: StockRow) => void }) {
+  const sizeName = s.productName.replace(/^Plastik\s+/i, '');
+  const dotColor = s.quantity <= s.minThreshold ? '#d4183d' : s.quantity <= s.minThreshold * 3 ? '#d4a017' : '#52b96a';
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: isLast ? 'none' : '1px solid #eaecf2' }}>
+      <div style={{ width: 6, height: 6, borderRadius: '50%', background: dotColor, flexShrink: 0 }} />
+      <span style={{ flex: 1, fontSize: '12px', fontWeight: 600, color: '#2d3142' }}>{sizeName}</span>
+      <span style={{ fontSize: '14px', fontWeight: 700, color: '#2d3142' }}>{s.quantity}</span>
+      <button onClick={e => { e.stopPropagation(); onEdit(s); }} aria-label="Edit kuantitas" style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '3px 2px', display: 'flex', alignItems: 'center' }}>
+        <Pencil size={10} color="#c0c4d0" />
+      </button>
+      <span style={{ fontSize: '10px', color: '#9a9db5', minWidth: 20 }}>pcs</span>
+    </div>
+  );
+}
+
 // ─────────── Plastic Group Card ───────────
-function PlasticGroupCard({ items }: { items: StockRow[] }) {
+function PlasticGroupCard({ items, onEdit }: { items: StockRow[]; onEdit: (s: StockRow) => void }) {
   const [expanded, setExpanded] = useState(false);
   const [alertIdx, setAlertIdx] = useState(0);
   const [flash, setFlash] = useState(true);
@@ -576,23 +693,9 @@ function PlasticGroupCard({ items }: { items: StockRow[] }) {
             const p = (s: string) => s.replace(/^Plastik\s*/i, '').split(/[×x]/).map(Number);
             const [a1, a2] = p(a.productName), [b1, b2] = p(b.productName);
             return a1 !== b1 ? a1 - b1 : a2 - b2;
-          }).map((s, i) => {
-            const sizeName   = s.productName.replace(/^Plastik\s+/i, '');
-            const dotColor   = s.quantity <= s.minThreshold ? '#d4183d' : s.quantity <= s.minThreshold * 3 ? '#d4a017' : '#52b96a';
-            const isLast     = i === items.length - 1;
-            return (
-              <div key={s.id} style={{
-                display: 'flex', alignItems: 'center', gap: 10,
-                padding: '8px 0',
-                borderBottom: isLast ? 'none' : '1px solid #eaecf2',
-              }}>
-                <div style={{ width: 6, height: 6, borderRadius: '50%', background: dotColor, flexShrink: 0 }} />
-                <span style={{ flex: 1, fontSize: '12px', fontWeight: 600, color: '#2d3142' }}>{sizeName}</span>
-                <span style={{ fontSize: '14px', fontWeight: 700, color: '#2d3142' }}>{s.quantity}</span>
-                <span style={{ fontSize: '10px', color: '#9a9db5', minWidth: 20 }}>pcs</span>
-              </div>
-            );
-          })}
+          }).map((s, i) => (
+            <PlasticSubRow key={s.id} s={s} isLast={i === items.length - 1} onEdit={onEdit} />
+          ))}
         </div>
       )}
     </div>
@@ -663,10 +766,12 @@ export default function StockScreen() {
   const rawStock     = useQuery(api.stock.list);
   const rawAdditions = useQuery(api.stock.listAdditions);
   const undoAdditionMutation = useMutation(api.stock.undoAddition);
+  const setQuantityMutation  = useMutation(api.stock.setQuantity);
   const syncAll              = useAction(api.sheetsSync.syncAll);
 
   const [showPriceEditor, setShowPriceEditor] = useState(false);
   const [showAddStock, setShowAddStock]       = useState(false);
+  const [editingStock, setEditingStock]       = useState<StockRow | null>(null);
   const [historyDate, setHistoryDate]         = useState<Date | null>(null);
   const [historyCalOpen, setHistoryCalOpen]   = useState(false);
   const [undoState, setUndoState]             = useState<{ result: AdditionResult; startedAt: number } | null>(null);
@@ -779,6 +884,13 @@ export default function StockScreen() {
   return (
     <div style={{ flex: 1, overflow: 'hidden', position: 'relative', display: 'flex', flexDirection: 'column', padding: '14px var(--app-page-gutter) 8px', gap: 10 }}>
       {showPriceEditor && <PriceEditorModal onClose={() => setShowPriceEditor(false)} />}
+      {editingStock && (
+        <SetQuantityModal
+          s={editingStock}
+          onClose={() => setEditingStock(null)}
+          onConfirm={qty => setQuantityMutation({ stockId: editingStock.id, quantity: qty }).catch(console.error)}
+        />
+      )}
       {showAddStock && (
         <AddStockModal
           stockItems={stockItems}
@@ -881,11 +993,11 @@ export default function StockScreen() {
         maskImage: 'linear-gradient(to bottom, transparent 0px, black 14px, black 100%)',
       }}>
         <div style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5', letterSpacing: '0.08em', textTransform: 'uppercase', paddingLeft: 2, flexShrink: 0 }}>Kedelai</div>
-        {soybeanStock.map(s => <StockCard key={s.id} s={s} maxQty={maxQty(s)} />)}
+        {soybeanStock.map(s => <StockCard key={s.id} s={s} maxQty={maxQty(s)} onEdit={setEditingStock} />)}
 
         <div style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5', letterSpacing: '0.08em', textTransform: 'uppercase', paddingLeft: 2, marginTop: 4, flexShrink: 0 }}>Lainnya</div>
-        {pureOther.map(s => <StockCard key={s.id} s={s} maxQty={maxQty(s)} />)}
-        {plasticItems.length > 0 && <PlasticGroupCard items={plasticItems} />}
+        {pureOther.map(s => <StockCard key={s.id} s={s} maxQty={maxQty(s)} onEdit={setEditingStock} />)}
+        {plasticItems.length > 0 && <PlasticGroupCard items={plasticItems} onEdit={setEditingStock} />}
 
         {/* History section */}
         <div style={{

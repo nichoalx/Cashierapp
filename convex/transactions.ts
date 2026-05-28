@@ -233,6 +233,7 @@ export const update = mutation({
       id: v.id("transactionItems"),
       quantity: v.number(),
       totalAmount: v.number(),
+      variantId: v.optional(v.id("productVariants")),
     })),
     removedItemIds: v.array(v.id("transactionItems")),
     remarks: v.optional(v.string()),
@@ -244,7 +245,11 @@ export const update = mutation({
     if (!userId) throw new Error("Unauthorized");
 
     for (const item of args.updatedItems) {
-      await ctx.db.patch(item.id, { quantity: item.quantity, totalAmount: item.totalAmount });
+      await ctx.db.patch(item.id, {
+        quantity: item.quantity,
+        totalAmount: item.totalAmount,
+        ...(item.variantId !== undefined ? { variantId: item.variantId } : {}),
+      });
     }
     for (const itemId of args.removedItemIds) {
       await ctx.db.delete(itemId);

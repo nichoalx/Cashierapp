@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '../../../convex/_generated/api';
@@ -142,6 +142,20 @@ export default function OrderDetailScreen() {
   const detail = useQuery(api.transactions.getDetail, txId ? { txId: txId as Id<'transactions'> } : 'skip');
   const recordPayment = useMutation(api.payments.record);
   const [showModal, setShowModal] = useState(false);
+  const [showLunas, setShowLunas] = useState(false);
+  const prevBalanceRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const balance = detail?.balance;
+    if (balance === undefined || balance === null) return;
+    if (prevBalanceRef.current !== null && prevBalanceRef.current > 0 && balance <= 0) {
+      setShowLunas(true);
+      prevBalanceRef.current = balance;
+      const t = setTimeout(() => setShowLunas(false), 2500);
+      return () => clearTimeout(t);
+    }
+    prevBalanceRef.current = balance;
+  }, [detail?.balance]);
 
   if (detail === undefined) return <OrderDetailSkeleton onBack={() => navigate(-1)} />;
   if (!detail) {
@@ -162,6 +176,29 @@ export default function OrderDetailScreen() {
 
   return (
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <style>{`
+        @keyframes lunas-bg   { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes lunas-card { from { opacity: 0; transform: scale(0.72); } to { opacity: 1; transform: scale(1); } }
+      `}</style>
+
+      {showLunas && (
+        <div
+          onClick={() => setShowLunas(false)}
+          style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'rgba(0,0,0,0.42)', display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'lunas-bg 250ms ease both' }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ background: '#eef0f5', borderRadius: 24, padding: '34px 48px', textAlign: 'center', boxShadow: '0 20px 60px rgba(0,0,0,0.22)', animation: 'lunas-card 380ms cubic-bezier(0.34,1.56,0.64,1) both' }}
+          >
+            <div style={{ width: 68, height: 68, borderRadius: '50%', background: '#52b96a1a', boxShadow: '4px 4px 10px #c8cad1, -4px -4px 10px #ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 18px' }}>
+              <Check size={34} color="#52b96a" strokeWidth={2.5} />
+            </div>
+            <div style={{ fontSize: '28px', fontWeight: 800, color: '#52b96a', letterSpacing: '-0.02em' }}>Lunas!</div>
+            <div style={{ fontSize: '12px', color: '#9a9db5', marginTop: 6 }}>Utang telah dilunasi</div>
+          </div>
+        </div>
+      )}
+
       {showModal && (
         <RecordPaymentModal
           remaining={detail.balance}

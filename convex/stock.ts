@@ -85,6 +85,16 @@ export const listAdditions = query({
   },
 });
 
+export const setQuantity = mutation({
+  args: { stockId: v.id("stock"), quantity: v.number() },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Unauthorized");
+    if (args.quantity < 0) throw new Error("Quantity cannot be negative");
+    await ctx.db.patch(args.stockId, { quantity: args.quantity });
+  },
+});
+
 export const undoAddition = mutation({
   args: { additionId: v.id("stockAdditions") },
   handler: async (ctx, args) => {

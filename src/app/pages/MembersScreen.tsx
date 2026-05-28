@@ -35,6 +35,13 @@ function formatPhone(raw: string): string {
   return `${d.slice(0, 4)}-${d.slice(4, 8)}-${d.slice(8)}`;
 }
 
+const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+function formatShortDate(iso: string): string {
+  const [y, m, d] = iso.split('-');
+  const label = `${parseInt(d, 10)} ${MONTHS_SHORT[parseInt(m, 10) - 1]}`;
+  return parseInt(y, 10) === new Date().getFullYear() ? label : `${label} ${y}`;
+}
+
 function initials(name: string) {
   return name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
 }
@@ -56,6 +63,8 @@ interface Member {
   name: string;
   phone: string;
   outstanding: number;
+  visitCount: number;
+  lastVisitDate?: string;
   color?: string;
   profileImageUrl?: string;
 }
@@ -452,7 +461,7 @@ export default function MembersScreen() {
   const navigate = useNavigate();
 
   const members: Member[] = useMemo(
-    () => (rawMembers ?? []).map(m => ({ id: m._id, name: m.name, phone: m.phone ?? '', outstanding: m.outstanding ?? 0, color: m.color, profileImageUrl: m.profileImageUrl })),
+    () => (rawMembers ?? []).map(m => ({ id: m._id, name: m.name, phone: m.phone ?? '', outstanding: m.outstanding ?? 0, visitCount: m.visitCount ?? 0, lastVisitDate: m.lastVisitDate, color: m.color, profileImageUrl: m.profileImageUrl })),
     [rawMembers],
   );
 
@@ -483,6 +492,7 @@ export default function MembersScreen() {
   });
   const [editingMember, setEditingMember] = useState<Member | null>(null);
   const [actionsOpen, setActionsOpen] = useState<Id<'members'> | null>(null);
+  const [debtOnly, setDebtOnly] = useState(false);
 
   const phoneInputRef = useRef<HTMLInputElement>(null);
   const deleteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -538,9 +548,10 @@ export default function MembersScreen() {
   }, [showAdd]);
 
   const filtered = useMemo(() => {
-    const base = pendingDelete
+    let base = pendingDelete
       ? members.filter(m => m.id !== pendingDelete.id)
       : members;
+    if (debtOnly) base = base.filter(m => m.outstanding > 0);
     const sorted = sortOrder === 'az'
       ? [...base].sort((a, b) => a.name.localeCompare(b.name, 'id', { sensitivity: 'base' }))
       : sortOrder === 'hutang'
@@ -552,7 +563,7 @@ export default function MembersScreen() {
       m.name.toLowerCase().includes(q) ||
       m.phone.includes(q)
     );
-  }, [members, search, pendingDelete, sortOrder]);
+  }, [members, search, pendingDelete, sortOrder, debtOnly]);
 
   const effectiveTotal = members.length - (pendingDelete ? 1 : 0);
   const saveDisabled = !newName.trim();
@@ -821,11 +832,19 @@ export default function MembersScreen() {
 
       {/* Count + sort toggle */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span style={{ fontSize: '12px', color: '#4a4e69' }}>
-          {search.trim()
-            ? `${filtered.length} dari ${effectiveTotal} anggota`
-            : `${effectiveTotal} anggota`}
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+          <span style={{ fontSize: '12px', color: '#4a4e69' }}>
+            {search.trim() || debtOnly
+              ? `${filtered.length} dari ${effectiveTotal} anggota`
+              : `${effectiveTotal} anggota`}
+          </span>
+          <button
+            onClick={() => setDebtOnly(d => !d)}
+            style={{ fontSize: '10px', fontWeight: 700, color: debtOnly ? '#d4a017' : '#c0c4d0', background: debtOnly ? '#d4a01715' : 'transparent', border: `1px solid ${debtOnly ? '#d4a01745' : 'transparent'}`, borderRadius: 20, padding: '2px 9px', cursor: 'pointer', transition: 'color 0.15s, background 0.15s, border-color 0.15s', fontFamily: 'inherit' }}
+          >
+            Hutang{debtOnly ? ' ×' : ''}
+          </button>
+        </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           {(['az', 'newest', 'hutang'] as const).map((s, i) => (
             <React.Fragment key={s}>
@@ -979,6 +998,10 @@ export default function MembersScreen() {
                       <span style={{ fontSize: '11px', color: '#d4a017', fontWeight: 600 }}>
                         Hutang {formatRupiah(m.outstanding)}
                       </span>
+                    ) : m.visitCount > 0 ? (
+                      <span style={{ fontSize: '11px', color: '#9a9db5' }}>
+                        {m.visitCount} kunjungan{m.lastVisitDate ? ` · terakhir ${formatShortDate(m.lastVisitDate)}` : ''}
+                      </span>
                     ) : (
                       <>
                         <Phone size={10} color="#c0c4d0" />
@@ -996,30 +1019,48 @@ export default function MembersScreen() {
                     onClick={e => e.stopPropagation()}
                     style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}
                   >
-                    <span style={{ fontSize: '11px', color: '#9a9db5' }}>Hapus?</span>
-                    <button
-                      onClick={() => handleDelete(m.id)}
-                      aria-label="Konfirmasi hapus"
-                      style={{
-                        width: 44, height: 44, borderRadius: '9px', border: 'none', cursor: 'pointer',
-                        background: '#d4183d',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      }}
-                    >
-                      <Trash2 size={13} color="#ffffff" />
-                    </button>
-                    <button
-                      onClick={() => setDeleteConfirm(null)}
-                      aria-label="Batal hapus"
-                      style={{
-                        width: 44, height: 44, borderRadius: '9px', border: 'none', cursor: 'pointer',
-                        background: '#eef0f5',
-                        boxShadow: SHD_RAISED_STD,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      }}
-                    >
-                      <X size={13} color="#9a9db5" />
-                    </button>
+                    {m.visitCount > 0 ? (
+                      <>
+                        <span style={{ fontSize: '10px', color: '#d4183d', fontWeight: 600, lineHeight: 1.2, maxWidth: 72, textAlign: 'right' }}>Ada transaksi</span>
+                        <button
+                          onClick={() => setDeleteConfirm(null)}
+                          aria-label="Tutup"
+                          style={{
+                            width: 44, height: 44, borderRadius: '9px', border: 'none', cursor: 'pointer',
+                            background: '#eef0f5', boxShadow: SHD_RAISED_STD,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          }}
+                        >
+                          <X size={13} color="#9a9db5" />
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <span style={{ fontSize: '11px', color: '#9a9db5' }}>Hapus?</span>
+                        <button
+                          onClick={() => handleDelete(m.id)}
+                          aria-label="Konfirmasi hapus"
+                          style={{
+                            width: 44, height: 44, borderRadius: '9px', border: 'none', cursor: 'pointer',
+                            background: '#d4183d',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          }}
+                        >
+                          <Trash2 size={13} color="#ffffff" />
+                        </button>
+                        <button
+                          onClick={() => setDeleteConfirm(null)}
+                          aria-label="Batal hapus"
+                          style={{
+                            width: 44, height: 44, borderRadius: '9px', border: 'none', cursor: 'pointer',
+                            background: '#eef0f5', boxShadow: SHD_RAISED_STD,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          }}
+                        >
+                          <X size={13} color="#9a9db5" />
+                        </button>
+                      </>
+                    )}
                   </div>
                 ) : (
                   <div style={{ position: 'relative', flexShrink: 0 }}>
