@@ -1,18 +1,33 @@
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { useQuery } from 'convex/react';
 import { api } from '../../../convex/_generated/api';
 import { Id } from '../../../convex/_generated/dataModel';
 import { formatRupiah } from '../store';
-import { ArrowLeft, Phone, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Phone, ChevronRight, Search, X } from 'lucide-react';
 
-const SHD_RAISED = '4px 4px 9px #c8cad1, -4px -4px 9px #ffffff';
-const SHD_LIST   = '3px 3px 7px #c8cad1, -3px -3px 7px rgba(255,255,255,0.92)';
+const SHD_RAISED    = '4px 4px 9px #c8cad1, -4px -4px 9px #ffffff';
+const SHD_LIST      = '3px 3px 7px #c8cad1, -3px -3px 7px rgba(255,255,255,0.92)';
+const SHD_RECESSED  = 'inset 3px 3px 7px #c8cad1, inset -3px -3px 7px #ffffff';
 
 const AVATAR_COLORS = [
   '#f5903d', '#4a90d9', '#52b96a', '#9b6dff',
   '#e05a6a', '#38b2ac', '#d4a017', '#e84393',
+  '#6366f1', '#0ea5e9', '#14b8a6', '#64748b',
 ];
+
+const MONTHS_ID = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+
+function formatDateHeader(isoDate: string): string {
+  const [y, m, d] = isoDate.split('-');
+  return `${parseInt(d, 10)} ${MONTHS_ID[parseInt(m, 10) - 1]} ${y}`;
+}
+
+function formatTime(ts: number): string {
+  return new Date(ts).toLocaleTimeString('id-ID', {
+    hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Jakarta',
+  });
+}
 
 function getAvatarColor(id: string) {
   let hash = 0;
@@ -83,6 +98,43 @@ export default function MemberDetailScreen() {
     memberId ? { memberId: memberId as Id<'members'> } : 'skip',
   );
 
+  // Hooks must be before any early returns
+  const [histSearch, setHistSearch] = useState('');
+  const [histSort, setHistSort] = useState<'newest' | 'oldest' | 'amount'>('newest');
+
+  const rawOrders = data?.orders ?? [];
+
+  const sortedOrders = useMemo(() => {
+    let result = [...rawOrders];
+    if (histSearch.trim()) {
+      const q = histSearch.toLowerCase();
+      result = result.filter(o =>
+        String(o.orderNumber).includes(q) ||
+        o.date.includes(q) ||
+        o.items.some(item =>
+          item.productShortName.toLowerCase().includes(q) ||
+          String(item.quantity).includes(q) ||
+          `${item.quantity}${item.unit}`.includes(q)
+        )
+      );
+    }
+    if (histSort === 'newest') result.sort((a, b) => b.timestamp - a.timestamp);
+    else if (histSort === 'oldest') result.sort((a, b) => a.timestamp - b.timestamp);
+    else result.sort((a, b) => b.total - a.total);
+    return result;
+  }, [rawOrders, histSearch, histSort]);
+
+  const groupedOrders = useMemo((): Array<[string, typeof sortedOrders]> | null => {
+    if (histSort === 'amount') return null;
+    const groups = new Map<string, typeof sortedOrders>();
+    for (const order of sortedOrders) {
+      const list = groups.get(order.date) ?? [];
+      list.push(order);
+      groups.set(order.date, list);
+    }
+    return [...groups.entries()];
+  }, [sortedOrders, histSort]);
+
   if (data === undefined) return <MemberDetailSkeleton onBack={() => navigate(-1)} />;
   if (!data) {
     return (
@@ -94,7 +146,7 @@ export default function MemberDetailScreen() {
   }
 
   const { member, orders, totalOutstanding } = data;
-  const color = getAvatarColor(member._id);
+  const color = member.color ?? getAvatarColor(member._id);
 
   return (
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -118,8 +170,11 @@ export default function MemberDetailScreen() {
 
         {/* Member card */}
         <div style={{ background: '#eef0f5', boxShadow: SHD_RAISED, borderRadius: 14, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 14 }}>
-          <div style={{ width: 52, height: 52, borderRadius: '14px', flexShrink: 0, background: `${color}1e`, boxShadow: '3px 3px 7px #c8cad1, -3px -3px 7px #ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <span style={{ fontSize: '16px', fontWeight: 800, color, lineHeight: 1 }}>{initials(member.name)}</span>
+          <div style={{ width: 52, height: 52, borderRadius: '14px', flexShrink: 0, background: `${color}1e`, boxShadow: '3px 3px 7px #c8cad1, -3px -3px 7px #ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+            {member.profileImageUrl
+              ? <img src={member.profileImageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              : <span style={{ fontSize: '16px', fontWeight: 800, color, lineHeight: 1 }}>{initials(member.name)}</span>
+            }
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: '15px', fontWeight: 700, color: '#2d3142', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{member.name}</div>
@@ -140,42 +195,155 @@ export default function MemberDetailScreen() {
 
         {/* Orders list */}
         <div>
-          <div style={{ fontSize: '9px', color: '#9a9db5', letterSpacing: '0.08em', fontWeight: 600, marginBottom: 8 }}>RIWAYAT PESANAN</div>
+          {/* Section label + sort controls */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <div style={{ fontSize: '9px', color: '#9a9db5', letterSpacing: '0.08em', fontWeight: 600 }}>RIWAYAT PESANAN</div>
+            {orders.length > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                {(['newest', 'oldest', 'amount'] as const).map((s, i) => (
+                  <React.Fragment key={s}>
+                    {i > 0 && <span style={{ fontSize: '10px', color: '#c0c4d0', padding: '0 1px', userSelect: 'none' }}>·</span>}
+                    <button
+                      onClick={() => setHistSort(s)}
+                      style={{
+                        fontSize: '10px', fontWeight: histSort === s ? 700 : 400,
+                        color: histSort === s ? '#4a4e69' : '#c0c4d0',
+                        background: 'none', border: 'none', cursor: 'pointer',
+                        padding: '8px 4px', lineHeight: 1, transition: 'color 0.15s',
+                      }}
+                    >
+                      {s === 'newest' ? 'Terbaru' : s === 'oldest' ? 'Terlama' : 'Terbesar'}
+                    </button>
+                  </React.Fragment>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Search bar */}
+          {orders.length > 0 && (
+            <div style={{ position: 'relative', marginBottom: 10 }}>
+              <Search size={12} color="#9a9db5" style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+              <input
+                type="text"
+                placeholder="Cari no. pesanan atau tanggal..."
+                value={histSearch}
+                onChange={e => setHistSearch(e.target.value)}
+                style={{ width: '100%', boxSizing: 'border-box', background: '#eef0f5', boxShadow: SHD_RECESSED, borderRadius: 10, border: 'none', outline: 'none', padding: '8px 28px', fontSize: '12px', color: '#2d3142', fontFamily: 'inherit' }}
+              />
+              {histSearch && (
+                <button onClick={() => setHistSearch('')} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 'none', cursor: 'pointer', padding: 2 }}>
+                  <X size={11} color="#9a9db5" />
+                </button>
+              )}
+            </div>
+          )}
+
           {orders.length === 0 ? (
             <div style={{ background: '#eef0f5', boxShadow: SHD_RAISED, borderRadius: 14, padding: '20px 16px', textAlign: 'center' }}>
               <span style={{ fontSize: '12px', color: '#c0c4d0' }}>Belum ada pesanan</span>
             </div>
+          ) : sortedOrders.length === 0 ? (
+            <div style={{ background: '#eef0f5', boxShadow: SHD_RAISED, borderRadius: 14, padding: '20px 16px', textAlign: 'center' }}>
+              <span style={{ fontSize: '12px', color: '#c0c4d0' }}>Tidak ditemukan</span>
+            </div>
+          ) : groupedOrders !== null ? (
+            /* Date-grouped view (newest / oldest sort) */
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {groupedOrders.map(([date, dateOrders]) => (
+                <div key={date}>
+                  <div style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5', letterSpacing: '0.08em', marginBottom: 5, paddingLeft: 2 }}>
+                    {formatDateHeader(date)}
+                  </div>
+                  <div style={{ background: '#eef0f5', boxShadow: SHD_RAISED, borderRadius: 14, overflow: 'hidden' }}>
+                    {dateOrders.map((order, i) => (
+                      <div
+                        key={order.id}
+                        onClick={() => navigate(`/order/${order.id}`)}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') navigate(`/order/${order.id}`); }}
+                        style={{ padding: '11px 14px', borderBottom: i < dateOrders.length - 1 ? '1px solid rgba(0,0,0,0.05)' : 'none', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}
+                      >
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          {/* Chips row */}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                              {order.items.map((item, j) => {
+                                const qtyLabel = item.unit === 'kg'
+                                  ? ` ${item.quantity % 1 === 0 ? item.quantity : item.quantity.toFixed(1)}kg`
+                                  : item.plasticSize ? ` ${item.plasticSize}` : '';
+                                return (
+                                  <span key={j} style={{ fontSize: '10px', fontWeight: 600, color: item.color, background: `${item.color}18`, borderRadius: 5, padding: '1px 5px' }}>
+                                    {item.productShortName}{qtyLabel}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                            {order.balance > 0 && (
+                              <span style={{ fontSize: '9px', fontWeight: 700, color: '#d4a017', background: '#d4a01722', borderRadius: 5, padding: '1px 6px', flexShrink: 0, marginLeft: 6 }}>
+                                Sisa {formatRupiah(order.balance)}
+                              </span>
+                            )}
+                          </div>
+                          {/* Order number + time + total */}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                              <span style={{ fontSize: '11px', fontWeight: 700, color: '#4a4e69' }}>#{order.orderNumber}</span>
+                              <span style={{ fontSize: '10px', color: '#c0c4d0' }}>·</span>
+                              <span style={{ fontSize: '11px', color: '#9a9db5' }}>{formatTime(order.timestamp)}</span>
+                            </div>
+                            <span style={{ fontSize: '13px', fontWeight: 700, color: order.balance > 0 ? '#d4a017' : '#2d3142' }}>{formatRupiah(order.total)}</span>
+                          </div>
+                        </div>
+                        <ChevronRight size={14} color="#c0c4d0" />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
           ) : (
+            /* Flat view (amount sort) */
             <div style={{ background: '#eef0f5', boxShadow: SHD_RAISED, borderRadius: 14, overflow: 'hidden' }}>
-              {orders.map((order, i) => (
+              {sortedOrders.map((order, i) => (
                 <div
                   key={order.id}
                   onClick={() => navigate(`/order/${order.id}`)}
                   role="button"
                   tabIndex={0}
                   onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') navigate(`/order/${order.id}`); }}
-                  style={{
-                    padding: '12px 14px',
-                    borderBottom: i < orders.length - 1 ? '1px solid rgba(0,0,0,0.05)' : 'none',
-                    display: 'flex', alignItems: 'center', gap: 10,
-                    cursor: 'pointer',
-                  }}
+                  style={{ padding: '11px 14px', borderBottom: i < sortedOrders.length - 1 ? '1px solid rgba(0,0,0,0.05)' : 'none', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}
                 >
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span style={{ fontSize: '13px', fontWeight: 700, color: '#2d3142' }}>#{order.orderNumber}</span>
-                      <span style={{ fontSize: '11px', color: '#9a9db5' }}>{order.date}</span>
-                    </div>
-                    <div style={{ marginTop: 3, display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span style={{ fontSize: '12px', fontWeight: 600, color: '#4a4e69' }}>{formatRupiah(order.total)}</span>
+                    {/* Chips row */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                        {order.items.map((item, j) => {
+                          const qtyLabel = item.unit === 'kg'
+                            ? ` ${item.quantity % 1 === 0 ? item.quantity : item.quantity.toFixed(1)}kg`
+                            : item.plasticSize ? ` ${item.plasticSize}` : '';
+                          return (
+                            <span key={j} style={{ fontSize: '10px', fontWeight: 600, color: item.color, background: `${item.color}18`, borderRadius: 5, padding: '1px 5px' }}>
+                              {item.productShortName}{qtyLabel}
+                            </span>
+                          );
+                        })}
+                      </div>
                       {order.balance > 0 && (
-                        <span style={{ fontSize: '10px', fontWeight: 700, color: '#d4a017', background: '#d4a01722', borderRadius: 5, padding: '1px 6px' }}>
+                        <span style={{ fontSize: '9px', fontWeight: 700, color: '#d4a017', background: '#d4a01722', borderRadius: 5, padding: '1px 6px', flexShrink: 0, marginLeft: 6 }}>
                           Sisa {formatRupiah(order.balance)}
                         </span>
                       )}
-                      {order.balance <= 0 && (
-                        <span style={{ fontSize: '10px', fontWeight: 700, color: '#52b96a' }}>Lunas</span>
-                      )}
+                    </div>
+                    {/* Order number + date + total */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                        <span style={{ fontSize: '11px', fontWeight: 700, color: '#4a4e69' }}>#{order.orderNumber}</span>
+                        <span style={{ fontSize: '10px', color: '#c0c4d0' }}>·</span>
+                        <span style={{ fontSize: '11px', color: '#9a9db5' }}>{formatDateHeader(order.date)}</span>
+                      </div>
+                      <span style={{ fontSize: '13px', fontWeight: 700, color: order.balance > 0 ? '#d4a017' : '#2d3142' }}>{formatRupiah(order.total)}</span>
                     </div>
                   </div>
                   <ChevronRight size={14} color="#c0c4d0" />

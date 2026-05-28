@@ -28,7 +28,10 @@ export const list = query({
         outstanding += Math.max(0, tx.totalAmount - initialPaid - recorded);
       }
 
-      return { ...m, outstanding };
+      const profileImageUrl = m.profileImageId
+        ? await ctx.storage.getUrl(m.profileImageId)
+        : null;
+      return { ...m, outstanding, profileImageUrl: profileImageUrl ?? undefined };
     }));
 
     return withBalances;
@@ -62,6 +65,22 @@ export const getWithHistory = query({
       const balance = Math.max(0, tx.totalAmount - initialPaid - recorded);
       totalOutstanding += balance;
 
+      const rawItems = await ctx.db
+        .query("transactionItems")
+        .withIndex("by_transactionId", q => q.eq("transactionId", tx._id))
+        .collect();
+      const items = await Promise.all(rawItems.map(async (item) => {
+        const product = await ctx.db.get(item.productId);
+        const variant = item.variantId ? await ctx.db.get(item.variantId) : null;
+        return {
+          productShortName: item.displayName ?? product?.name ?? '?',
+          quantity: item.quantity,
+          unit: product?.unit ?? 'pcs',
+          color: item.displayColor ?? product?.color ?? '#9a9db5',
+          plasticSize: variant?.variantValue,
+        };
+      }));
+
       return {
         id: tx._id,
         orderNumber: tx.orderNumber,
@@ -71,10 +90,18 @@ export const getWithHistory = query({
         discount: tx.discount ?? 0,
         amountPaid: initialPaid,
         balance,
+        items,
       };
     }));
 
-    return { member, orders, totalOutstanding };
+    const profileImageUrl = member.profileImageId
+      ? await ctx.storage.getUrl(member.profileImageId)
+      : null;
+    return {
+      member: { ...member, profileImageUrl: profileImageUrl ?? undefined },
+      orders,
+      totalOutstanding,
+    };
   },
 });
 
@@ -107,5 +134,36 @@ export const remove = mutation({
     const userId = await getAuthUserId(ctx);
     if (!userId) throw new Error("Unauthorized");
     await ctx.db.delete(args.memberId);
+  },
+});
+
+export const generateUploadUrl = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Unauthorized");
+    return await ctx.storage.generateUploadUrl();
+  },
+});
+
+export const setProfileImage = mutation({
+  args: { memberId: v.id("members"), storageId: v.id("_storage") },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Unauthorized");
+    const member = await ctx.db.get(args.memberId);
+    if (member?.profileImageId) await ctx.storage.delete(member.profileImageId);
+    await ctx.db.patch(args.memberId, { profileImageId: args.storageId });
+  },
+});
+
+export const removeProfileImage = mutation({
+  args: { memberId: v.id("members") },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Unauthorized");
+    const member = await ctx.db.get(args.memberId);
+    if (member?.profileImageId) await ctx.storage.delete(member.profileImageId);
+    await ctx.db.patch(args.memberId, { profileImageId: undefined });
   },
 });

@@ -111,7 +111,7 @@ async function buildMonthGrid(args: {
   }>;
   snapshots: Array<{ date: string; productId: Id<"products">; variantId?: Id<"productVariants">; quantity: number }>;
   productInfo: Array<{ productId: Id<"products">; variantId?: Id<"productVariants">; label: string; unit: string }>;
-  paymentDetails: Array<{ orderNumber: number; txDate: string; memberName: string; txTotal: number; paymentDate: string; amount: number }>;
+  paymentDetails: Array<{ orderNumber: number; txDate: string; memberName: string; txTotal: number; paymentDate: string; amount: number; balance: number }>;
 }): Promise<{ grid: (string | number)[][]; stockHeaderRows: number[]; dateHeaderRows: number[]; txGroupRanges: Array<{ startRow: number; endRow: number }>; totalRowIndices: number[]; stockRowCount: number; paymentRowCount: number }> {
   const txHeader: string[] = [
     "Order", "Time", "Product", "Qty", "Unit",
@@ -199,13 +199,13 @@ async function buildMonthGrid(args: {
 
   // Payment column — sorted by payment date (already sorted by timestamp from query)
   const paymentColumn: (string | number)[][] = args.paymentDetails.map(p => [
-    p.orderNumber, p.txDate, p.memberName, Math.round(p.txTotal), p.paymentDate, Math.round(p.amount),
+    p.orderNumber, p.txDate, p.memberName, Math.round(p.txTotal), p.paymentDate, Math.round(p.amount), Math.round(p.balance),
   ]);
 
   const LEFT_COLS = 11;
   const GAP = 1;
   const PAYMENT_GAP = 1;
-  const PAYMENT_COLS = 6;
+  const PAYMENT_COLS = 7;
   const totalRows = Math.max(1 + txRows.length, stockColumn.length, paymentColumn.length, 1);
   const grid: (string | number)[][] = [];
   const stockHeaderRows: number[] = [];
@@ -214,7 +214,7 @@ async function buildMonthGrid(args: {
     ...txHeader, ...Array(GAP).fill(""),
     "Stocks", "AMOUNT", "Δ",
     ...Array(PAYMENT_GAP).fill(""),
-    "Order #", "Tx Date", "Member", "Tx Total", "Payment Date", "Amount",
+    "Order #", "Tx Date", "Member", "Tx Total", "Payment Date", "Amount", "Sisa",
   ]);
 
   for (let r = 1; r < totalRows + 1; r++) {
@@ -275,6 +275,22 @@ async function applyMonthFormatting(
   requests.push({
     unmergeCells: {
       range: { sheetId, startRowIndex: 1, endRowIndex: totalRows, startColumnIndex: 0, endColumnIndex: 11 },
+    },
+  });
+
+  // Blast-clear: wipe background + bold/italic for the full tx column range + a buffer beyond
+  // totalRows so that total-row dark styling from a previous (longer) sync doesn't linger.
+  const BLAST_ROWS = Math.max(totalRows + 100, 200);
+  requests.push({
+    repeatCell: {
+      range: { sheetId, startRowIndex: 1, endRowIndex: BLAST_ROWS, startColumnIndex: 0, endColumnIndex: 11 },
+      cell: {
+        userEnteredFormat: {
+          backgroundColor: { red: 1, green: 1, blue: 1 },
+          textFormat: { bold: false, italic: false },
+        },
+      },
+      fields: "userEnteredFormat(backgroundColor,textFormat)",
     },
   });
 
@@ -486,10 +502,10 @@ async function applyMonthFormatting(
     });
   }
 
-  // Payment table — header (row 0, cols Q–V = 16–22), distinct slate-blue colour
+  // Payment table — header (row 0, cols Q–W = 16–23), distinct slate-blue colour
   requests.push({
     repeatCell: {
-      range: { sheetId, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 16, endColumnIndex: 22 },
+      range: { sheetId, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 16, endColumnIndex: 23 },
       cell: {
         userEnteredFormat: {
           backgroundColor: COLORS.paymentHeaderBg,
@@ -502,16 +518,16 @@ async function applyMonthFormatting(
     },
   });
 
-  // Payment data rows — center + middle (cols Q–V = 16–22)
+  // Payment data rows — center + middle (cols Q–W = 16–23)
   requests.push({
     repeatCell: {
-      range: { sheetId, startRowIndex: 1, endRowIndex: totalRows, startColumnIndex: 16, endColumnIndex: 22 },
+      range: { sheetId, startRowIndex: 1, endRowIndex: totalRows, startColumnIndex: 16, endColumnIndex: 23 },
       cell: { userEnteredFormat: { horizontalAlignment: "CENTER", verticalAlignment: "MIDDLE" } },
       fields: "userEnteredFormat(horizontalAlignment,verticalAlignment)",
     },
   });
 
-  // Tx Total (col T = 19) and Amount (col V = 21) — currency format
+  // Tx Total (col T = 19), Amount (col V = 21), Sisa (col W = 22) — currency format
   requests.push({
     repeatCell: {
       range: { sheetId, startRowIndex: 1, endRowIndex: totalRows, startColumnIndex: 19, endColumnIndex: 20 },
@@ -524,6 +540,39 @@ async function applyMonthFormatting(
       range: { sheetId, startRowIndex: 1, endRowIndex: totalRows, startColumnIndex: 21, endColumnIndex: 22 },
       cell: { userEnteredFormat: { numberFormat: { type: "NUMBER", pattern: '"Rp "#,##0' } } },
       fields: "userEnteredFormat.numberFormat",
+    },
+  });
+  requests.push({
+    repeatCell: {
+      range: { sheetId, startRowIndex: 1, endRowIndex: totalRows, startColumnIndex: 22, endColumnIndex: 23 },
+      cell: { userEnteredFormat: { numberFormat: { type: "NUMBER", pattern: '"Rp "#,##0;;' } } },
+      fields: "userEnteredFormat.numberFormat",
+    },
+  });
+
+  // Sisa column conditional formatting: green = lunas (0), amber = outstanding (> 0)
+  requests.push({
+    addConditionalFormatRule: {
+      rule: {
+        ranges: [{ sheetId, startRowIndex: 1, endRowIndex: totalRows, startColumnIndex: 22, endColumnIndex: 23 }],
+        booleanRule: {
+          condition: { type: "NUMBER_EQ", values: [{ userEnteredValue: "0" }] },
+          format: { textFormat: { foregroundColor: COLORS.positive, bold: true } },
+        },
+      },
+      index: 0,
+    },
+  });
+  requests.push({
+    addConditionalFormatRule: {
+      rule: {
+        ranges: [{ sheetId, startRowIndex: 1, endRowIndex: totalRows, startColumnIndex: 22, endColumnIndex: 23 }],
+        booleanRule: {
+          condition: { type: "NUMBER_GREATER", values: [{ userEnteredValue: "0" }] },
+          format: { textFormat: { foregroundColor: { red: 212 / 255, green: 160 / 255, blue: 23 / 255 }, bold: true } },
+        },
+      },
+      index: 0,
     },
   });
 
@@ -577,6 +626,7 @@ async function applyMonthFormatting(
     105,  // T Tx Total
     90,   // U Payment Date
     105,  // V Amount
+    100,  // W Sisa
   ];
   widths.forEach((w, i) => {
     requests.push({
@@ -656,11 +706,11 @@ async function applyMonthFormatting(
     });
   }
 
-  // Payment table Q–V (header row + all payment rows)
+  // Payment table Q–W (header row + all payment rows)
   if (paymentRowCount > 0) {
     requests.push({
       updateBorders: {
-        range: { sheetId, startRowIndex: 0, endRowIndex: paymentRowCount + 1, startColumnIndex: 16, endColumnIndex: 22 },
+        range: { sheetId, startRowIndex: 0, endRowIndex: paymentRowCount + 1, startColumnIndex: 16, endColumnIndex: 23 },
         top: borderLine, bottom: borderLine, left: borderLine, right: borderLine,
         innerHorizontal: borderLine, innerVertical: borderLine,
       },
@@ -740,8 +790,16 @@ async function applyPaymentsFormatting(
   spreadsheetId: string,
   sheetId: number,
   totalRows: number,
+  existingRuleCount: number,
 ): Promise<void> {
-  const requests: SheetsRequest[] = [
+  const requests: SheetsRequest[] = [];
+
+  // Wipe existing conditional rules so they don't accumulate across syncs
+  for (let i = existingRuleCount - 1; i >= 0; i--) {
+    requests.push({ deleteConditionalFormatRule: { sheetId, index: i } });
+  }
+
+  requests.push(
     {
       updateSheetProperties: {
         properties: { sheetId, gridProperties: { frozenRowCount: 1 } },
@@ -762,7 +820,7 @@ async function applyPaymentsFormatting(
         fields: "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment)",
       },
     },
-    // Currency: Tx Total (col D = index 3) and Payment Amount (col F = index 5)
+    // Currency: Tx Total (col D = 3), Amount (col F = 5), Sisa (col G = 6)
     {
       repeatCell: {
         range: { sheetId, startRowIndex: 1, endRowIndex: totalRows, startColumnIndex: 3, endColumnIndex: 4 },
@@ -777,8 +835,15 @@ async function applyPaymentsFormatting(
         fields: "userEnteredFormat.numberFormat",
       },
     },
-    // Column widths
-    ...[55, 110, 150, 110, 110, 110].map((w, i) => ({
+    {
+      repeatCell: {
+        range: { sheetId, startRowIndex: 1, endRowIndex: totalRows, startColumnIndex: 6, endColumnIndex: 7 },
+        cell: { userEnteredFormat: { numberFormat: { type: "NUMBER", pattern: '"Rp "#,##0;;' } } },
+        fields: "userEnteredFormat.numberFormat",
+      },
+    },
+    // Column widths: A-G
+    ...[55, 110, 150, 110, 110, 110, 100].map((w, i) => ({
       updateDimensionProperties: {
         range: { sheetId, dimension: "COLUMNS", startIndex: i, endIndex: i + 1 },
         properties: { pixelSize: w },
@@ -792,7 +857,33 @@ async function applyPaymentsFormatting(
         fields: "pixelSize",
       },
     },
-  ];
+  );
+
+  // Sisa conditional formatting: green = lunas, amber = outstanding
+  requests.push({
+    addConditionalFormatRule: {
+      rule: {
+        ranges: [{ sheetId, startRowIndex: 1, endRowIndex: totalRows, startColumnIndex: 6, endColumnIndex: 7 }],
+        booleanRule: {
+          condition: { type: "NUMBER_EQ", values: [{ userEnteredValue: "0" }] },
+          format: { textFormat: { foregroundColor: COLORS.positive, bold: true } },
+        },
+      },
+      index: 0,
+    },
+  });
+  requests.push({
+    addConditionalFormatRule: {
+      rule: {
+        ranges: [{ sheetId, startRowIndex: 1, endRowIndex: totalRows, startColumnIndex: 6, endColumnIndex: 7 }],
+        booleanRule: {
+          condition: { type: "NUMBER_GREATER", values: [{ userEnteredValue: "0" }] },
+          format: { textFormat: { foregroundColor: { red: 212 / 255, green: 160 / 255, blue: 23 / 255 }, bold: true } },
+        },
+      },
+      index: 0,
+    },
+  });
 
   await sheets.spreadsheets.batchUpdate({
     spreadsheetId,
@@ -817,7 +908,7 @@ async function doSyncMonth(ctx: ActionCtx, yearMonth: string) {
 async function doSyncPayments(ctx: ActionCtx) {
   const payments = await ctx.runQuery(internal.sheetsSyncData.getPaymentsForSync, {});
   const grid: (string | number)[][] = [
-    ["Order #", "Tx Date", "Member", "Tx Total", "Payment Date", "Amount"],
+    ["Order #", "Tx Date", "Member", "Tx Total", "Payment Date", "Amount", "Sisa"],
     ...payments.map(p => [
       p.orderNumber,
       p.txDate,
@@ -825,12 +916,13 @@ async function doSyncPayments(ctx: ActionCtx) {
       Math.round(p.txTotal),
       p.paymentDate,
       Math.round(p.amount),
+      Math.round(p.balance),
     ] as (string | number)[]),
   ];
   const { sheets, sheetId } = getSheetsClient();
-  const { sheetId: tabSheetId } = await ensureTab(sheets, sheetId, "Payments");
+  const { sheetId: tabSheetId, existingRuleCount } = await ensureTab(sheets, sheetId, "Payments");
   await writeTab(sheets, sheetId, "Payments", grid);
-  await applyPaymentsFormatting(sheets, sheetId, tabSheetId, grid.length);
+  await applyPaymentsFormatting(sheets, sheetId, tabSheetId, grid.length, existingRuleCount);
   return { rows: grid.length };
 }
 

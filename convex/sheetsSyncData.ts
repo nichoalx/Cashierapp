@@ -126,6 +126,25 @@ export const getMonthData = internalQuery({
       .filter(p => p.date.startsWith(monthPrefix))
       .sort((a, b) => a.timestamp - b.timestamp);
 
+    // Compute running balance for every payment globally (so cross-month payments are accurate)
+    const sortedAllPayments = [...allPayments].sort((a, b) => a.timestamp - b.timestamp);
+    const uniquePaymentTxIds = [...new Set(sortedAllPayments.map(p => p.transactionId))];
+    const paymentTxCache = new Map<string, { totalAmount: number; amountPaid: number }>();
+    for (const txId of uniquePaymentTxIds) {
+      const tx = await ctx.db.get(txId);
+      if (tx) paymentTxCache.set(txId, { totalAmount: tx.totalAmount, amountPaid: tx.amountPaid ?? tx.totalAmount });
+    }
+    const runningByPaymentTx = new Map<string, number>();
+    const paymentBalanceMap = new Map<string, number>();
+    for (const p of sortedAllPayments) {
+      const txData = paymentTxCache.get(p.transactionId);
+      if (!txData) continue;
+      const prev = runningByPaymentTx.get(p.transactionId) ?? 0;
+      const newRunning = prev + p.amount;
+      runningByPaymentTx.set(p.transactionId, newRunning);
+      paymentBalanceMap.set(p._id, Math.max(0, Math.round(txData.totalAmount - txData.amountPaid - newRunning)));
+    }
+
     const paymentDetails = await Promise.all(monthPayments.map(async (p) => {
       const tx = await ctx.db.get(p.transactionId);
       const member = tx?.memberId ? await ctx.db.get(tx.memberId) : null;
@@ -136,6 +155,7 @@ export const getMonthData = internalQuery({
         txTotal: tx?.totalAmount ?? 0,
         paymentDate: p.date,
         amount: p.amount,
+        balance: paymentBalanceMap.get(p._id) ?? 0,
       };
     }));
 
@@ -163,21 +183,39 @@ export const getPaymentsForSync = internalQuery({
     const payments = await ctx.db.query("payments").collect();
     payments.sort((a, b) => a.timestamp - b.timestamp);
 
-    return Promise.all(payments.map(async (p) => {
-      const tx = await ctx.db.get(p.transactionId);
-      let memberName = "";
-      if (tx?.memberId) {
-        const member = await ctx.db.get(tx.memberId);
-        memberName = member?.name ?? "";
+    // Compute running balance per transaction
+    const uniqueTxIds = [...new Set(payments.map(p => p.transactionId))];
+    const txCache = new Map<string, { totalAmount: number; amountPaid: number; orderNumber: number; date: string; memberId?: string }>();
+    for (const txId of uniqueTxIds) {
+      const tx = await ctx.db.get(txId);
+      if (tx) txCache.set(txId, { totalAmount: tx.totalAmount, amountPaid: tx.amountPaid ?? tx.totalAmount, orderNumber: tx.orderNumber, date: tx.date, memberId: tx.memberId });
+    }
+    const memberCache = new Map<string, string>();
+    for (const txData of txCache.values()) {
+      if (txData.memberId && !memberCache.has(txData.memberId)) {
+        const m = await ctx.db.get(txData.memberId as Id<"members">);
+        if (m) memberCache.set(txData.memberId, m.name);
       }
+    }
+    const runningByTx = new Map<string, number>();
+
+    return payments.map(p => {
+      const txData = txCache.get(p.transactionId);
+      const prev = runningByTx.get(p.transactionId) ?? 0;
+      const newRunning = prev + p.amount;
+      runningByTx.set(p.transactionId, newRunning);
+      const txTotal = txData?.totalAmount ?? 0;
+      const amountPaid = txData?.amountPaid ?? 0;
+      const balance = Math.max(0, Math.round(txTotal - amountPaid - newRunning));
       return {
-        orderNumber: tx?.orderNumber ?? 0,
-        txDate: tx?.date ?? "",
-        memberName,
-        txTotal: tx?.totalAmount ?? 0,
+        orderNumber: txData?.orderNumber ?? 0,
+        txDate: txData?.date ?? "",
+        memberName: txData?.memberId ? (memberCache.get(txData.memberId) ?? "") : "",
+        txTotal,
         paymentDate: p.date,
         amount: p.amount,
+        balance,
       };
-    }));
+    });
   },
 });

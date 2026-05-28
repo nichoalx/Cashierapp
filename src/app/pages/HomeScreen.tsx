@@ -684,7 +684,7 @@ export default function HomeScreen() {
                 <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
                   {/* Eceran modifier button */}
                   {(() => {
-                    const eActive = step.type === 'eceran_brand' || (step.type === 'quantity' && step.isEceran);
+                    const eActive = step.type === 'eceran_brand' || !!(step.type === 'quantity' && step.isEceran);
                     return (
                       <button onClick={handleEceranClick} style={neuBtn('#9b6dff', eActive)}>
                         <span style={{ fontSize: '12px', fontWeight: 700, color: eActive ? '#fff' : '#9b6dff' }}>E</span>

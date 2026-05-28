@@ -53,6 +53,7 @@ export default defineSchema({
     name: v.string(),
     phone: v.optional(v.string()),
     color: v.optional(v.string()),
+    profileImageId: v.optional(v.id("_storage")),
   }).index("by_name", ["name"]),
 
   // ─── Transactions ─────────────────────────────────────────────────────────────

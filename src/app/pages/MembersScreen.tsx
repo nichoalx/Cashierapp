@@ -57,10 +57,171 @@ interface Member {
   phone: string;
   outstanding: number;
   color?: string;
+  profileImageUrl?: string;
 }
 
 const SHD_RECESSED_MODAL = 'inset 3px 3px 7px #c8cad1, inset -3px -3px 7px #ffffff';
 const SHD_ACTION_MODAL   = '4px 4px 10px rgba(0,0,0,0.16), -3px -3px 8px rgba(255,255,255,0.5)';
+
+const CROP_CONTAINER = 280;
+const CROP_R = 110;
+
+function CropModal({ file, onConfirm, onCancel }: {
+  file: File;
+  onConfirm: (blob: Blob) => void;
+  onCancel: () => void;
+}) {
+  const [imgUrl] = useState(() => URL.createObjectURL(file));
+  const [natW, setNatW] = useState(0);
+  const [natH, setNatH] = useState(0);
+  const [tx, setTx] = useState(0);
+  const [ty, setTy] = useState(0);
+  const [scale, setScale] = useState(1);
+  const imgRef = useRef<HTMLImageElement>(null);
+  const dragRef = useRef<{ sx: number; sy: number; stx: number; sty: number } | null>(null);
+  const pinchRef = useRef<{ startDist: number; startScale: number } | null>(null);
+
+  useEffect(() => () => URL.revokeObjectURL(imgUrl), [imgUrl]);
+
+  useEffect(() => {
+    const img = new Image();
+    img.onload = () => {
+      setNatW(img.naturalWidth);
+      setNatH(img.naturalHeight);
+      setScale((CROP_R * 2) / Math.min(img.naturalWidth, img.naturalHeight));
+    };
+    img.src = imgUrl;
+  }, [imgUrl]);
+
+  const minScale = natW > 0 ? (CROP_R * 2) / Math.min(natW, natH) : 1;
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    e.preventDefault();
+    if (e.touches.length === 1) {
+      dragRef.current = { sx: e.touches[0].clientX, sy: e.touches[0].clientY, stx: tx, sty: ty };
+      pinchRef.current = null;
+    } else if (e.touches.length === 2) {
+      dragRef.current = null;
+      pinchRef.current = {
+        startDist: Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY),
+        startScale: scale,
+      };
+    }
+  };
+  const handleTouchMove = (e: React.TouchEvent) => {
+    e.preventDefault();
+    if (e.touches.length === 1 && dragRef.current) {
+      setTx(dragRef.current.stx + e.touches[0].clientX - dragRef.current.sx);
+      setTy(dragRef.current.sty + e.touches[0].clientY - dragRef.current.sy);
+    } else if (e.touches.length === 2 && pinchRef.current) {
+      const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+      setScale(Math.max(minScale, pinchRef.current.startScale * dist / pinchRef.current.startDist));
+    }
+  };
+  const handleTouchEnd = () => { dragRef.current = null; pinchRef.current = null; };
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    dragRef.current = { sx: e.clientX, sy: e.clientY, stx: tx, sty: ty };
+  };
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!dragRef.current) return;
+    setTx(dragRef.current.stx + e.clientX - dragRef.current.sx);
+    setTy(dragRef.current.sty + e.clientY - dragRef.current.sy);
+  };
+  const handleMouseUp = () => { dragRef.current = null; };
+
+  const handleConfirm = () => {
+    const OUT = 240;
+    const canvas = document.createElement('canvas');
+    canvas.width = OUT;
+    canvas.height = OUT;
+    const ctx2 = canvas.getContext('2d')!;
+    const imgLeft = CROP_CONTAINER / 2 + tx - (natW * scale) / 2;
+    const imgTop  = CROP_CONTAINER / 2 + ty - (natH * scale) / 2;
+    const cropLeft = CROP_CONTAINER / 2 - CROP_R;
+    const cropTop  = CROP_CONTAINER / 2 - CROP_R;
+    ctx2.drawImage(
+      imgRef.current!,
+      (cropLeft - imgLeft) / scale, (cropTop - imgTop) / scale,
+      (CROP_R * 2) / scale, (CROP_R * 2) / scale,
+      0, 0, OUT, OUT,
+    );
+    canvas.toBlob(b => { if (b) onConfirm(b); }, 'image/jpeg', 0.4);
+  };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 300, background: '#161618', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14 }}>
+      {/* Crop area */}
+      <div
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+        style={{ width: CROP_CONTAINER, height: CROP_CONTAINER, position: 'relative', overflow: 'hidden', borderRadius: 8, userSelect: 'none', touchAction: 'none', cursor: 'grab', flexShrink: 0 }}
+      >
+        {natW > 0 && (
+          <img
+            ref={imgRef}
+            src={imgUrl}
+            draggable={false}
+            style={{
+              position: 'absolute',
+              width: natW * scale,
+              height: natH * scale,
+              left: '50%', top: '50%',
+              transform: `translate(calc(-50% + ${tx}px), calc(-50% + ${ty}px))`,
+              pointerEvents: 'none',
+            }}
+          />
+        )}
+        {/* Dimmed overlay with rounded-square cutout matching the avatar shape */}
+        <svg width={CROP_CONTAINER} height={CROP_CONTAINER} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+          <defs>
+            <mask id="crop-mask">
+              <rect width={CROP_CONTAINER} height={CROP_CONTAINER} fill="white" />
+              <rect x={CROP_CONTAINER / 2 - CROP_R} y={CROP_CONTAINER / 2 - CROP_R} width={CROP_R * 2} height={CROP_R * 2} rx="14" fill="black" />
+            </mask>
+          </defs>
+          <rect width={CROP_CONTAINER} height={CROP_CONTAINER} fill="rgba(0,0,0,0.58)" mask="url(#crop-mask)" />
+          <rect x={CROP_CONTAINER / 2 - CROP_R} y={CROP_CONTAINER / 2 - CROP_R} width={CROP_R * 2} height={CROP_R * 2} rx="14" fill="none" stroke="rgba(255,255,255,0.65)" strokeWidth="1.5" />
+        </svg>
+      </div>
+
+      {/* Zoom slider */}
+      <input
+        type="range"
+        min={Math.round(minScale * 100)}
+        max={Math.round(minScale * 400)}
+        value={Math.round(scale * 100)}
+        onChange={e => setScale(Number(e.target.value) / 100)}
+        style={{ width: CROP_CONTAINER, accentColor: '#4a90d9' }}
+      />
+
+      <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.3)', letterSpacing: '0.03em' }}>
+        Geser · cubit atau slider untuk zoom
+      </div>
+
+      <div style={{ display: 'flex', gap: 10 }}>
+        <button
+          onClick={onCancel}
+          style={{ height: 44, padding: '0 22px', borderRadius: 12, border: 'none', cursor: 'pointer', background: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.75)', fontSize: '13px', fontWeight: 600, fontFamily: 'inherit' }}
+        >
+          Batal
+        </button>
+        <button
+          onClick={handleConfirm}
+          style={{ height: 44, padding: '0 28px', borderRadius: 12, border: 'none', cursor: 'pointer', background: '#4a90d9', color: '#fff', fontSize: '13px', fontWeight: 700, fontFamily: 'inherit' }}
+        >
+          Pakai Foto
+        </button>
+      </div>
+    </div>
+  );
+}
+
 
 function EditMemberModal({ member, onSave, onClose }: {
   member: Member;
@@ -72,6 +233,13 @@ function EditMemberModal({ member, onSave, onClose }: {
   const [color, setColor] = useState(member.color ?? getAvatarColor(member.id));
   const [nameError, setNameError] = useState('');
   const [pressed, setPressed] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(member.profileImageUrl ?? null);
+  const [uploading, setUploading] = useState(false);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const generateUploadUrl = useMutation(api.members.generateUploadUrl);
+  const setProfileImageMutation = useMutation(api.members.setProfileImage);
+  const removeProfileImageMutation = useMutation(api.members.removeProfileImage);
 
   const valid = name.trim().length > 0;
   const phoneDigits = phone.replace(/\D/g, '');
@@ -84,93 +252,163 @@ function EditMemberModal({ member, onSave, onClose }: {
     onClose();
   };
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    setPendingFile(file);
+  };
+
+  const handleCropConfirm = async (blob: Blob) => {
+    setPendingFile(null);
+    const localUrl = URL.createObjectURL(blob);
+    setPreviewUrl(localUrl);
+    setUploading(true);
+    try {
+      const uploadUrl = await generateUploadUrl();
+      const res = await fetch(uploadUrl, { method: 'POST', headers: { 'Content-Type': 'image/jpeg' }, body: blob });
+      const { storageId } = await res.json() as { storageId: string };
+      await setProfileImageMutation({ memberId: member.id, storageId: storageId as Id<'_storage'> });
+    } catch {
+      setPreviewUrl(member.profileImageUrl ?? null);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleRemove = async () => {
+    setPreviewUrl(null);
+    await removeProfileImageMutation({ memberId: member.id });
+  };
+
   return (
-    <div
-      style={{ position: 'fixed', left: 0, right: 0, top: 'var(--app-visual-offset-top)', height: 'var(--app-visual-height)', zIndex: 200, background: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
-      onClick={onClose}
-    >
+    <>
+      {pendingFile && (
+        <CropModal
+          file={pendingFile}
+          onConfirm={handleCropConfirm}
+          onCancel={() => setPendingFile(null)}
+        />
+      )}
       <div
-        onClick={e => e.stopPropagation()}
-        style={{ background: '#eef0f5', borderRadius: '22px 22px 0 0', width: '100%', maxWidth: 430, boxShadow: '0 -8px 30px rgba(0,0,0,0.15)', padding: '20px 16px 32px', animation: 'sheet-up 250ms cubic-bezier(0.16,1,0.3,1) both' }}
+        style={{ position: 'fixed', left: 0, right: 0, top: 'var(--app-visual-offset-top)', height: 'var(--app-visual-height)', zIndex: 200, background: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
+        onClick={onClose}
       >
-        {/* Live avatar preview */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-          <div style={{ width: 42, height: 42, borderRadius: '12px', flexShrink: 0, background: `${color}1e`, boxShadow: '3px 3px 7px #c8cad1, -3px -3px 7px #ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <span style={{ fontSize: '13px', fontWeight: 800, color, lineHeight: 1 }}>{initials(name || member.name)}</span>
-          </div>
-          <div>
-            <div style={{ fontSize: '9px', color: '#9a9db5', letterSpacing: '0.1em' }}>EDIT ANGGOTA</div>
-            <div style={{ fontSize: '15px', fontWeight: 700, color: '#2d3142' }}>{member.name}</div>
-          </div>
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {/* Name */}
-          <div>
-            <input
-              type="text"
-              placeholder="Nama lengkap"
-              value={name}
-              onChange={e => { setName(e.target.value); setNameError(''); }}
-              autoFocus
-              maxLength={60}
-              style={{ width: '100%', boxSizing: 'border-box', background: '#eef0f5', boxShadow: SHD_RECESSED_MODAL, borderRadius: 12, border: 'none', outline: 'none', padding: '11px 14px', fontSize: '14px', color: '#2d3142', fontFamily: 'inherit' }}
-            />
-            {nameError && <div style={{ fontSize: '11px', color: '#d4183d', marginTop: 4, paddingLeft: 2 }}>{nameError}</div>}
-          </div>
-
-          {/* Phone */}
-          <div>
-            <input
-              type="tel"
-              placeholder="Nomor HP (opsional)"
-              value={phone}
-              onChange={e => setPhone(e.target.value)}
-              style={{ width: '100%', boxSizing: 'border-box', background: '#eef0f5', boxShadow: SHD_RECESSED_MODAL, borderRadius: 12, border: 'none', outline: 'none', padding: '11px 14px', fontSize: '14px', color: '#2d3142', fontFamily: 'inherit' }}
-            />
-            {phone.trim() && (
-              <div style={{ fontSize: '11px', color: phoneOutOfRange ? '#d4a017' : '#9a9db5', marginTop: 4, paddingLeft: 2 }}>
-                {phoneOutOfRange ? `Periksa nomor: ${phoneDigits.length} digit (diharapkan 10–13)` : formatPhone(phone)}
+        <div
+          onClick={e => e.stopPropagation()}
+          style={{ background: '#eef0f5', borderRadius: '22px 22px 0 0', width: '100%', maxWidth: 430, boxShadow: '0 -8px 30px rgba(0,0,0,0.15)', padding: '20px 16px 32px', animation: 'sheet-up 250ms cubic-bezier(0.16,1,0.3,1) both' }}
+        >
+          {/* Avatar + header */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+            <div style={{ position: 'relative', flexShrink: 0 }}>
+              <div
+                onClick={() => !uploading && fileInputRef.current?.click()}
+                style={{ width: 52, height: 52, borderRadius: '14px', background: `${color}1e`, boxShadow: '3px 3px 7px #c8cad1, -3px -3px 7px #ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: uploading ? 'default' : 'pointer', overflow: 'hidden', position: 'relative' }}
+              >
+                {previewUrl ? (
+                  <img src={previewUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  <span style={{ fontSize: '14px', fontWeight: 800, color, lineHeight: 1 }}>{initials(name || member.name)}</span>
+                )}
+                {uploading && (
+                  <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div style={{ width: 14, height: 14, borderRadius: '50%', border: '2px solid rgba(255,255,255,0.35)', borderTopColor: '#fff', animation: 'spin 0.7s linear infinite' }} />
+                  </div>
+                )}
+                {!uploading && (
+                  <div style={{ position: 'absolute', bottom: 0, right: 0, background: 'rgba(0,0,0,0.45)', borderRadius: '6px 0 0 0', padding: '2px 4px', lineHeight: 1, fontSize: 9, color: '#fff' }}>✎</div>
+                )}
               </div>
-            )}
-          </div>
-
-          {/* Color picker */}
-          <div>
-            <div style={{ fontSize: '9px', color: '#9a9db5', letterSpacing: '0.1em', marginBottom: 8 }}>WARNA AVATAR</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8 }}>
-              {AVATAR_COLORS.map(c => (
+              {/* Remove button — only shown when there's a photo */}
+              {previewUrl && !uploading && (
                 <button
-                  key={c}
-                  onClick={() => setColor(c)}
-                  style={{
-                    width: '100%', aspectRatio: '1 / 1', borderRadius: '10px', background: c, border: 'none', cursor: 'pointer',
-                    boxShadow: color === c
-                      ? `0 0 0 2px #eef0f5, 0 0 0 4px ${c}, 2px 2px 6px #c8cad1`
-                      : '2px 2px 5px rgba(0,0,0,0.12), -1px -1px 4px rgba(255,255,255,0.7)',
-                    transform: color === c ? 'scale(1.15)' : 'scale(1)',
-                    transition: 'transform 0.15s, box-shadow 0.15s',
-                  }}
-                />
-              ))}
+                  onClick={handleRemove}
+                  aria-label="Hapus foto"
+                  style={{ position: 'absolute', top: -6, right: -6, width: 18, height: 18, borderRadius: '50%', border: 'none', cursor: 'pointer', background: '#d4183d', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '1px 1px 4px rgba(0,0,0,0.3)' }}
+                >
+                  <X size={9} color="#fff" />
+                </button>
+              )}
+            </div>
+            <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileChange} style={{ display: 'none' }} />
+            <div>
+              <div style={{ fontSize: '9px', color: '#9a9db5', letterSpacing: '0.1em' }}>EDIT ANGGOTA</div>
+              <div style={{ fontSize: '15px', fontWeight: 700, color: '#2d3142' }}>{member.name}</div>
+              <div style={{ fontSize: '10px', color: '#9a9db5', marginTop: 1 }}>Ketuk foto untuk ganti</div>
             </div>
           </div>
 
-          {/* Save */}
-          <button
-            onClick={handleSave}
-            disabled={!valid}
-            onPointerDown={() => setPressed(true)}
-            onPointerUp={() => setPressed(false)}
-            onPointerLeave={() => setPressed(false)}
-            style={{ height: 48, borderRadius: 14, border: 'none', cursor: valid ? 'pointer' : 'default', background: valid ? '#4a90d9' : '#a8acbe', color: '#fff', fontWeight: 700, fontSize: '14px', boxShadow: pressed && valid ? 'inset 3px 3px 8px rgba(0,0,0,0.22)' : SHD_ACTION_MODAL, transform: pressed && valid ? 'scale(0.97)' : 'scale(1)', transition: 'box-shadow 0.07s, transform 0.07s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
-          >
-            <Check size={15} /> Simpan Perubahan
-          </button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {/* Name */}
+            <div>
+              <input
+                type="text"
+                placeholder="Nama lengkap"
+                value={name}
+                onChange={e => { setName(e.target.value); setNameError(''); }}
+                autoFocus
+                maxLength={60}
+                style={{ width: '100%', boxSizing: 'border-box', background: '#eef0f5', boxShadow: SHD_RECESSED_MODAL, borderRadius: 12, border: 'none', outline: 'none', padding: '11px 14px', fontSize: '14px', color: '#2d3142', fontFamily: 'inherit' }}
+              />
+              {nameError && <div style={{ fontSize: '11px', color: '#d4183d', marginTop: 4, paddingLeft: 2 }}>{nameError}</div>}
+            </div>
+
+            {/* Phone */}
+            <div>
+              <input
+                type="tel"
+                placeholder="Nomor HP (opsional)"
+                value={phone}
+                onChange={e => setPhone(e.target.value)}
+                style={{ width: '100%', boxSizing: 'border-box', background: '#eef0f5', boxShadow: SHD_RECESSED_MODAL, borderRadius: 12, border: 'none', outline: 'none', padding: '11px 14px', fontSize: '14px', color: '#2d3142', fontFamily: 'inherit' }}
+              />
+              {phone.trim() && (
+                <div style={{ fontSize: '11px', color: phoneOutOfRange ? '#d4a017' : '#9a9db5', marginTop: 4, paddingLeft: 2 }}>
+                  {phoneOutOfRange ? `Periksa nomor: ${phoneDigits.length} digit (diharapkan 10–13)` : formatPhone(phone)}
+                </div>
+              )}
+            </div>
+
+            {/* Color picker */}
+            <div>
+              <div style={{ fontSize: '9px', color: '#9a9db5', letterSpacing: '0.1em', marginBottom: 8 }}>WARNA AVATAR</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8 }}>
+                {AVATAR_COLORS.map(c => (
+                  <button
+                    key={c}
+                    onClick={() => setColor(c)}
+                    style={{
+                      width: '100%', aspectRatio: '1 / 1', borderRadius: '10px', background: c, border: 'none', cursor: 'pointer',
+                      boxShadow: color === c
+                        ? `0 0 0 2px #eef0f5, 0 0 0 4px ${c}, 2px 2px 6px #c8cad1`
+                        : '2px 2px 5px rgba(0,0,0,0.12), -1px -1px 4px rgba(255,255,255,0.7)',
+                      transform: color === c ? 'scale(1.15)' : 'scale(1)',
+                      transition: 'transform 0.15s, box-shadow 0.15s',
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+
+            {/* Save */}
+            <button
+              onClick={handleSave}
+              disabled={!valid}
+              onPointerDown={() => setPressed(true)}
+              onPointerUp={() => setPressed(false)}
+              onPointerLeave={() => setPressed(false)}
+              style={{ height: 48, borderRadius: 14, border: 'none', cursor: valid ? 'pointer' : 'default', background: valid ? '#4a90d9' : '#a8acbe', color: '#fff', fontWeight: 700, fontSize: '14px', boxShadow: pressed && valid ? 'inset 3px 3px 8px rgba(0,0,0,0.22)' : SHD_ACTION_MODAL, transform: pressed && valid ? 'scale(0.97)' : 'scale(1)', transition: 'box-shadow 0.07s, transform 0.07s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+            >
+              <Check size={15} /> Simpan Perubahan
+            </button>
+          </div>
         </div>
+        <style>{`
+          @keyframes sheet-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
+          @keyframes spin { to { transform: rotate(360deg); } }
+        `}</style>
       </div>
-      <style>{`@keyframes sheet-up { from { transform: translateY(100%); } to { transform: translateY(0); } }`}</style>
-    </div>
+    </>
   );
 }
 
@@ -214,7 +452,7 @@ export default function MembersScreen() {
   const navigate = useNavigate();
 
   const members: Member[] = useMemo(
-    () => (rawMembers ?? []).map(m => ({ id: m._id, name: m.name, phone: m.phone ?? '', outstanding: m.outstanding ?? 0, color: m.color })),
+    () => (rawMembers ?? []).map(m => ({ id: m._id, name: m.name, phone: m.phone ?? '', outstanding: m.outstanding ?? 0, color: m.color, profileImageUrl: m.profileImageUrl })),
     [rawMembers],
   );
 
@@ -721,8 +959,12 @@ export default function MembersScreen() {
                   background: `${color}1e`,
                   boxShadow: '3px 3px 7px #c8cad1, -3px -3px 7px #ffffff',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  overflow: 'hidden',
                 }}>
-                  <span style={{ fontSize: '13px', fontWeight: 800, color, lineHeight: 1 }}>{initials(m.name)}</span>
+                  {m.profileImageUrl
+                    ? <img src={m.profileImageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    : <span style={{ fontSize: '13px', fontWeight: 800, color, lineHeight: 1 }}>{initials(m.name)}</span>
+                  }
                 </div>
 
                 <div style={{ flex: 1, minWidth: 0 }}>
