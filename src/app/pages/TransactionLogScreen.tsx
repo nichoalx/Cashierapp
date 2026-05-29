@@ -772,7 +772,7 @@ export default function TransactionLogScreen() {
     const itemMap: Record<string, { qty: number; label: string; color: string; unit: string; isSoybean: boolean }> = {};
 
     for (const item of allItems) {
-      const key = item.plasticSize ? `plastic-${item.plasticSize}` : item.productId;
+      const key = item.plasticSize ? `plastic-${item.plasticSize}` : item.unit === 'kg' ? item.productShortName : item.productId;
       const label = item.unit === 'kg'
         ? item.productShortName
         : item.plasticSize ? `Plastik ${item.plasticSize}` : item.productName;
