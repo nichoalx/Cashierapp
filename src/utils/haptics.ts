@@ -1,6 +1,6 @@
-export function tap(ms = 9) {
+export function tap(ms = 30) {
   try { navigator.vibrate?.(ms); } catch {}
 }
 
-export function softTap() { tap(6); }
-export function confirmTap() { tap(18); }
+export function softTap() { tap(22); }
+export function confirmTap() { tap(50); }
