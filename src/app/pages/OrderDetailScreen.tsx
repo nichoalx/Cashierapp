@@ -54,6 +54,12 @@ function RecordPaymentModal({
               autoFocus
               style={{ width: '100%', boxSizing: 'border-box', background: '#eef0f5', boxShadow: SHD_RECESSED, borderRadius: 12, border: 'none', outline: 'none', padding: '11px 12px 11px 34px', fontSize: '14px', color: '#2d3142', fontFamily: 'inherit' }}
             />
+            <button
+              onClick={() => setAmount(String(remaining))}
+              style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: '#4a90d922', border: 'none', borderRadius: 7, padding: '3px 8px', fontSize: '11px', fontWeight: 700, color: '#4a90d9', cursor: 'pointer', lineHeight: 1.4 }}
+            >
+              Penuh
+            </button>
           </div>
           <input
             type="date"

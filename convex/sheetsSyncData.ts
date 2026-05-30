@@ -71,6 +71,7 @@ export const getMonthData = internalQuery({
         orderNumber: tx.orderNumber,
         timestamp: tx.timestamp,
         totalAmount: tx.totalAmount,
+        amountPaid: tx.amountPaid ?? tx.totalAmount,
         discount: tx.discount ?? 0,
         remarks: tx.remarks ?? "",
         memberName: member?.name ?? "",
@@ -159,6 +160,10 @@ export const getMonthData = internalQuery({
       };
     }));
 
+    paymentDetails.sort((a, b) => {
+      const d = a.txDate.localeCompare(b.txDate);
+      return d !== 0 ? d : a.orderNumber - b.orderNumber;
+    });
     return { txDetails, snapshots, productInfo, paymentDetails };
   },
 });
@@ -177,45 +182,3 @@ export const getMembersForSync = internalQuery({
   },
 });
 
-export const getPaymentsForSync = internalQuery({
-  args: {},
-  handler: async (ctx) => {
-    const payments = await ctx.db.query("payments").collect();
-    payments.sort((a, b) => a.timestamp - b.timestamp);
-
-    // Compute running balance per transaction
-    const uniqueTxIds = [...new Set(payments.map(p => p.transactionId))];
-    const txCache = new Map<string, { totalAmount: number; amountPaid: number; orderNumber: number; date: string; memberId?: string }>();
-    for (const txId of uniqueTxIds) {
-      const tx = await ctx.db.get(txId);
-      if (tx) txCache.set(txId, { totalAmount: tx.totalAmount, amountPaid: tx.amountPaid ?? tx.totalAmount, orderNumber: tx.orderNumber, date: tx.date, memberId: tx.memberId });
-    }
-    const memberCache = new Map<string, string>();
-    for (const txData of txCache.values()) {
-      if (txData.memberId && !memberCache.has(txData.memberId)) {
-        const m = await ctx.db.get(txData.memberId as Id<"members">);
-        if (m) memberCache.set(txData.memberId, m.name);
-      }
-    }
-    const runningByTx = new Map<string, number>();
-
-    return payments.map(p => {
-      const txData = txCache.get(p.transactionId);
-      const prev = runningByTx.get(p.transactionId) ?? 0;
-      const newRunning = prev + p.amount;
-      runningByTx.set(p.transactionId, newRunning);
-      const txTotal = txData?.totalAmount ?? 0;
-      const amountPaid = txData?.amountPaid ?? 0;
-      const balance = Math.max(0, Math.round(txTotal - amountPaid - newRunning));
-      return {
-        orderNumber: txData?.orderNumber ?? 0,
-        txDate: txData?.date ?? "",
-        memberName: txData?.memberId ? (memberCache.get(txData.memberId) ?? "") : "",
-        txTotal,
-        paymentDate: p.date,
-        amount: p.amount,
-        balance,
-      };
-    });
-  },
-});

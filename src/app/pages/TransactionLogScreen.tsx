@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { Pencil, Trash2, X, Check, ChevronDown, ChevronLeft, ChevronRight, Search, SlidersHorizontal, MessageSquare, User, Receipt, FileSpreadsheet, FileDown } from 'lucide-react';
+import { Pencil, Trash2, X, Check, ChevronDown, ChevronLeft, ChevronRight, Search, SlidersHorizontal, MessageSquare, User, Receipt, FileSpreadsheet, FileDown, Printer } from 'lucide-react';
 import { useQuery, useMutation, useAction } from 'convex/react';
 import { api } from '../../../convex/_generated/api';
 import { Id } from '../../../convex/_generated/dataModel';
@@ -7,6 +7,7 @@ import { formatRupiah, TransactionItem, Member } from '../store';
 import { MemberPickerModal } from '../components/MemberPickerModal';
 import { PriceTicker } from '../components/PriceTicker';
 import { PriceEditorModal } from '../components/PriceEditorModal';
+import { printReceipt } from '../../utils/printer';
 
 const SHD_RAISED_STD    = '4px 4px 9px #c8cad1, -4px -4px 9px #ffffff';
 const SHD_RAISED_LIST   = '3px 3px 7px #c8cad1, -3px -3px 7px rgba(255,255,255,0.92)';
@@ -521,6 +522,230 @@ function EditModal({ transaction, members, plasticVariants, onClose, onSave }: E
   );
 }
 
+// ─── Receipt preview ─────────────────────────────────────────────────────────
+
+function buildReceiptPreview(tx: Tx): string {
+  const W = 32;
+  const pad = (left: string, right: string, w = W) =>
+    left + ' '.repeat(Math.max(1, w - left.length - right.length)) + right;
+  const center = (s: string, w = W) => ' '.repeat(Math.floor((w - s.length) / 2)) + s;
+  const rp = (n: number) => `Rp. ${n.toLocaleString('id-ID')}`;
+  const fmtQty = (q: number) => (q % 1 === 0 ? String(q) : q.toFixed(1));
+  const d = tx.timestamp;
+  const date = `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+  const orderNum = `#${String(tx.orderNumber).padStart(3,'0')}`;
+  const LINE = '-'.repeat(W);
+  const subtotal = tx.items.reduce((s, i) => s + i.total, 0);
+
+  const lines: string[] = [
+    center('Agro Muda Anugerah'),
+    center('Jl. Gatot Subroto No. 712'),
+    center('Randudongkal, Pemalang, 52353.'),
+    center('+62 819-3067-7877'),
+    '',
+    '',
+    pad(date, orderNum),
+    LINE,
+  ];
+
+  for (const item of tx.items) {
+    const name = item.productName + (item.plasticSize ? ` ${item.plasticSize}` : '');
+    const qty  = `${fmtQty(item.quantity)} ${item.unit} x ${rp(item.unitPrice)}`;
+    lines.push(name, pad(qty, rp(item.total)), '');
+  }
+
+  lines.push(LINE);
+  if (tx.discount > 0) {
+    lines.push(pad('Subtotal', rp(subtotal)));
+    lines.push(pad('Diskon', `-${rp(tx.discount)}`));
+  }
+  lines.push(pad('TOTAL.', rp(tx.total)));
+  if (tx.remarks) lines.push('', tx.remarks);
+  lines.push('', '', center('Terima Kasih!'), '', '');
+
+  return lines.join('\n');
+}
+
+function ZigzagBottom() {
+  const tw = 8, th = 6, count = 50;
+  const w = count * tw;
+  let d = `M 0,0 L ${w},0`;
+  for (let i = count; i > 0; i--) {
+    d += ` L ${(i - 0.5) * tw},${th} L ${(i - 1) * tw},0`;
+  }
+  d += ' Z';
+  return (
+    <svg viewBox={`0 0 ${w} ${th}`} preserveAspectRatio="none" style={{ display: 'block', width: '100%', height: th, flexShrink: 0 }}>
+      <path d={d} fill="white" />
+    </svg>
+  );
+}
+
+function ReceiptPreviewModal({ tx, onClose }: { tx: Tx; onClose: () => void }) {
+  const [printState, setPrintState]     = useState<'idle' | 'printing' | 'done' | 'error'>('idle');
+  const [errorMsg, setErrorMsg]         = useState('');
+  const [printPressed, setPrintPressed] = useState(false);
+  const [cancelPressed, setCancelPressed] = useState(false);
+
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape' && printState !== 'printing') onClose(); };
+    document.addEventListener('keydown', h);
+    return () => document.removeEventListener('keydown', h);
+  }, [onClose, printState]);
+
+  const handlePrint = async () => {
+    if (printState === 'printing' || printState === 'done') return;
+    setPrintState('printing');
+    setErrorMsg('');
+    try {
+      await printReceipt({
+        timestamp: tx.timestamp.getTime(),
+        orderNumber: tx.orderNumber,
+        items: tx.items.map(i => ({
+          productName: i.productName,
+          variantValue: i.plasticSize ?? null,
+          quantity: i.quantity,
+          unit: i.unit,
+          unitPrice: i.unitPrice,
+        })),
+        totalAmount: tx.total,
+        discount: tx.discount,
+        remarks: tx.remarks,
+      });
+      setPrintState('done');
+      setTimeout(onClose, 1500);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : '';
+      const friendly = msg.toLowerCase().includes('cancel') || msg.toLowerCase().includes('chooser')
+        ? 'Printer tidak dipilih. Coba lagi.'
+        : msg.toLowerCase().includes('gatt') || msg.toLowerCase().includes('connect')
+        ? 'Gagal terhubung ke printer. Pastikan printer menyala.'
+        : msg.toLowerCase().includes('not found') || msg.toLowerCase().includes('no device')
+        ? 'Printer tidak ditemukan. Periksa Bluetooth.'
+        : 'Gagal mencetak. Coba lagi.';
+      setErrorMsg(friendly);
+      setPrintState('error');
+    }
+  };
+
+  const preview  = buildReceiptPreview(tx);
+  const printing = printState === 'printing';
+  const done     = printState === 'done';
+  const error    = printState === 'error';
+
+  return (
+    <div
+      style={{
+        position: 'fixed', left: 0, right: 0,
+        top: 'var(--app-visual-offset-top)', height: 'var(--app-visual-height)',
+        zIndex: 60,
+        background: 'rgba(0,0,0,0.48)',
+        backdropFilter: 'blur(7px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: '0 24px',
+      }}
+      onClick={printing ? undefined : onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Preview struk #${tx.orderNumber}`}
+        onClick={e => e.stopPropagation()}
+        style={{
+          width: '100%', maxWidth: 300,
+          display: 'flex', flexDirection: 'column', alignItems: 'stretch',
+          animation: 'cal-modal-in 200ms cubic-bezier(0.16, 1, 0.3, 1) both',
+        }}
+      >
+        {/* Receipt paper — shadow via filter so it follows the zigzag silhouette */}
+        <div style={{ width: '100%', filter: 'drop-shadow(0 8px 36px rgba(0,0,0,0.32))' }}>
+          <div style={{
+            background: 'white',
+            borderRadius: '14px 14px 0 0',
+            maxHeight: '58vh',
+            overflowY: 'auto',
+            overflowX: 'hidden',
+            padding: '18px 16px 12px',
+            display: 'flex', justifyContent: 'center',
+          }}>
+            <pre style={{
+              fontFamily: "'Courier New', Courier, monospace",
+              fontSize: '10.5px', lineHeight: 1.65,
+              margin: 0, color: '#1a1a1a',
+              whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+              width: '32ch', flexShrink: 0,
+            }}>
+              {preview}
+            </pre>
+          </div>
+          <ZigzagBottom />
+        </div>
+
+        {/* Error message */}
+        {error && errorMsg && (
+          <div style={{ fontSize: '11px', color: 'rgba(255,220,220,0.9)', textAlign: 'center', marginTop: 10, lineHeight: 1.4 }}>
+            {errorMsg}
+          </div>
+        )}
+
+        {/* Buttons — float below the receipt on the blur backdrop */}
+        <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+          <button
+            onClick={onClose}
+            disabled={printing}
+            onPointerDown={() => setCancelPressed(true)}
+            onPointerUp={() => setCancelPressed(false)}
+            onPointerLeave={() => setCancelPressed(false)}
+            style={{
+              flex: 1, height: 50, borderRadius: '14px', border: 'none',
+              cursor: printing ? 'default' : 'pointer',
+              background: 'rgba(238,240,245,0.92)',
+              boxShadow: 'none',
+              transform: cancelPressed && !printing ? 'scale(0.97)' : 'scale(1)',
+              fontSize: '14px', fontWeight: 600, color: '#9a9db5',
+              opacity: printing ? 0.4 : 1,
+              backdropFilter: 'blur(4px)',
+              transition: 'box-shadow 0.07s, transform 0.07s, opacity 0.15s',
+            }}
+          >
+            Batal
+          </button>
+          <button
+            onClick={handlePrint}
+            disabled={printing || done}
+            onPointerDown={() => { if (!printing && !done) setPrintPressed(true); }}
+            onPointerUp={() => setPrintPressed(false)}
+            onPointerLeave={() => setPrintPressed(false)}
+            style={{
+              flex: 2, height: 50, borderRadius: '14px', border: 'none',
+              cursor: printing || done ? 'default' : 'pointer',
+              background: done ? '#52b96a' : error ? '#d4183d' : '#4a90d9',
+              color: '#fff', fontWeight: 700, fontSize: '14px',
+              boxShadow: 'none',
+              transform: printPressed ? 'scale(0.97)' : 'scale(1)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+              transition: 'background 0.2s, box-shadow 0.07s, transform 0.07s',
+            }}
+          >
+            {printing ? (
+              <>
+                <div style={{ width: 14, height: 14, borderRadius: '50%', border: '2px solid rgba(255,255,255,0.35)', borderTopColor: '#fff', animation: 'sheets-sync-spin 0.7s linear infinite' }} />
+                Mencetak...
+              </>
+            ) : done ? (
+              <><Check size={16} /> Berhasil!</>
+            ) : error ? (
+              <><Printer size={14} /> Coba Lagi</>
+            ) : (
+              <><Printer size={14} /> Cetak</>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── CSV export ──────────────────────────────────────────────────────────────
 
 function exportCSV(txs: Tx[], date: Date) {
@@ -612,6 +837,7 @@ export default function TransactionLogScreen() {
   const [summarySlide, setSummarySlide] = useState(0);
   const [savedId, setSavedId]           = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<{ id: string; orderNumber: number } | null>(null);
+  const [printingTx, setPrintingTx]       = useState<Tx | null>(null);
   const deleteTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingDeleteRef = useRef<{ id: string; orderNumber: number } | null>(null);
 
@@ -982,6 +1208,24 @@ export default function TransactionLogScreen() {
 
                   <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
                     <button
+                      aria-label="Cetak struk"
+                      onClick={e => { e.stopPropagation(); setPrintingTx(tx); }}
+                      onPointerDown={() => setPressedBtn(`print_${tx.id}`)}
+                      onPointerUp={() => setPressedBtn(null)}
+                      onPointerLeave={() => setPressedBtn(null)}
+                      style={{
+                        width: 44, height: 44, borderRadius: '10px', border: 'none', cursor: 'pointer',
+                        background: '#eef0f5',
+                        boxShadow: pressedBtn === `print_${tx.id}` ? SHD_RECESSED : SHD_RAISED_STD,
+                        transform: pressedBtn === `print_${tx.id}` ? 'scale(0.96)' : 'scale(1)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        transition: 'box-shadow 0.07s, transform 0.07s',
+                        flexShrink: 0,
+                      }}
+                    >
+                      <Printer size={13} color="#9a9db5" />
+                    </button>
+                    <button
                       onClick={(e) => { e.stopPropagation(); setEditingTx(tx); }}
                       onPointerDown={() => setPressedBtn(`edit_${tx.id}`)}
                       onPointerUp={() => setPressedBtn(null)}
@@ -1108,6 +1352,9 @@ export default function TransactionLogScreen() {
         }
       `}</style>
       {showPriceEditor && <PriceEditorModal onClose={() => setShowPriceEditor(false)} />}
+      {printingTx && (
+        <ReceiptPreviewModal tx={printingTx} onClose={() => setPrintingTx(null)} />
+      )}
       {editingTx && (
         <EditModal
           transaction={editingTx}
