@@ -53,7 +53,7 @@ export async function printReceipt(tx: PrintTransaction) {
 }
 
 function rp(n: number) {
-  return `Rp. ${n.toLocaleString("id-ID")}`;
+  return `Rp.${n.toLocaleString("id-ID")}`;
 }
 
 function padLine(left: string, right: string, width = 32) {
@@ -81,7 +81,7 @@ function buildReceipt(tx: PrintTransaction): string {
 
   const itemLines = tx.items.flatMap(i => {
     const name = `${i.productName}${i.variantValue ? ` ${i.variantValue}` : ""}`;
-    const qty  = `${fmtQty(i.quantity)} ${i.unit} x ${rp(i.unitPrice)}`;
+    const qty  = `${fmtQty(i.quantity)}${i.unit} x ${rp(i.unitPrice)}`;
     const sub  = rp(i.quantity * i.unitPrice);
     return [`${name}\n`, `${padLine(qty, sub)}\n\n`];
   });

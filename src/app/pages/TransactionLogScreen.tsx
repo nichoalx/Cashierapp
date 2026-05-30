@@ -530,7 +530,7 @@ function buildReceiptPreview(tx: Tx): string {
   const pad = (left: string, right: string, w = W) =>
     left + ' '.repeat(Math.max(1, w - left.length - right.length)) + right;
   const center = (s: string, w = W) => ' '.repeat(Math.floor((w - s.length) / 2)) + s;
-  const rp = (n: number) => `Rp. ${n.toLocaleString('id-ID')}`;
+  const rp = (n: number) => `Rp.${n.toLocaleString('id-ID')}`;
   const fmtQty = (q: number) => (q % 1 === 0 ? String(q) : q.toFixed(1));
   const d = tx.timestamp;
   const date = `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
@@ -551,7 +551,7 @@ function buildReceiptPreview(tx: Tx): string {
 
   for (const item of tx.items) {
     const name = item.productName + (item.plasticSize ? ` ${item.plasticSize}` : '');
-    const qty  = `${fmtQty(item.quantity)} ${item.unit} x ${rp(item.unitPrice)}`;
+    const qty  = `${fmtQty(item.quantity)}${item.unit} x ${rp(item.unitPrice)}`;
     lines.push(name, pad(qty, rp(item.total)), '');
   }
 
@@ -671,7 +671,7 @@ function ReceiptPreviewModal({ tx, onClose }: { tx: Tx; onClose: () => void }) {
           }}>
             <pre style={{
               fontFamily: "'Courier New', Courier, monospace",
-              fontSize: '10.5px', lineHeight: 1.65,
+              fontSize: '9px', lineHeight: 1.65,
               margin: 0, color: '#1a1a1a',
               whiteSpace: 'pre-wrap', wordBreak: 'break-word',
               width: '32ch', flexShrink: 0,
