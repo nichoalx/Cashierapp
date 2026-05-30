@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { X, MessageSquare, User, Check, RotateCcw } from 'lucide-react';
+import { tap, softTap, confirmTap } from '../../utils/haptics';
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '../../../convex/_generated/api';
 import { Id } from '../../../convex/_generated/dataModel';
@@ -66,7 +67,7 @@ function RemarksModal({ value, onSave, onClose }: {
         />
         <button
           onClick={() => { onSave(draft.trim()); onClose(); }}
-          onPointerDown={() => setSavePressed(true)}
+          onPointerDown={() => { confirmTap(); setSavePressed(true); }}
           onPointerUp={() => setSavePressed(false)}
           onPointerLeave={() => setSavePressed(false)}
           style={{
@@ -392,7 +393,7 @@ export default function HomeScreen() {
                 <button
                   aria-label="Tambah catatan"
                   onClick={() => setShowRemarksModal(true)}
-                  onPointerDown={() => setPressedIcon('remarks')}
+                  onPointerDown={() => { softTap(); setPressedIcon('remarks'); }}
                   onPointerUp={() => setPressedIcon(null)}
                   onPointerLeave={() => setPressedIcon(null)}
                   style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '6px 8px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}
@@ -403,7 +404,7 @@ export default function HomeScreen() {
                 <button
                   aria-label="Pilih pembeli"
                   onClick={() => setShowMemberPicker(true)}
-                  onPointerDown={() => setPressedIcon('member')}
+                  onPointerDown={() => { softTap(); setPressedIcon('member'); }}
                   onPointerUp={() => setPressedIcon(null)}
                   onPointerLeave={() => setPressedIcon(null)}
                   style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '6px 8px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}
@@ -525,7 +526,7 @@ export default function HomeScreen() {
                       <button
                         aria-label={`Hapus ${item.productShortName}`}
                         onClick={() => removeItem(item.id)}
-                        onPointerDown={() => setPressedRemove(item.id)}
+                        onPointerDown={() => { tap(); setPressedRemove(item.id); }}
                         onPointerUp={() => setPressedRemove(null)}
                         onPointerLeave={() => setPressedRemove(null)}
                         style={{ background: 'transparent', border: 'none', color: '#d4183d', cursor: 'pointer', padding: '16px 8px' }}

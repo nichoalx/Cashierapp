@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { tap } from '../../utils/haptics';
 import { AlertTriangle, Home, RotateCw } from 'lucide-react';
 import { isRouteErrorResponse, useNavigate, useRouteError } from 'react-router';
 
@@ -165,7 +166,7 @@ export default function AppErrorScreen() {
               cursor: 'pointer',
               transition: `box-shadow 90ms ${MOTION_EASE}, transform 90ms ${MOTION_EASE}`,
             }}
-            onPointerDown={() => setReloadPressed(true)}
+            onPointerDown={() => { tap(); setReloadPressed(true); }}
             onPointerUp={() => setReloadPressed(false)}
             onPointerLeave={() => setReloadPressed(false)}
           >
@@ -194,7 +195,7 @@ export default function AppErrorScreen() {
               cursor: 'pointer',
               transition: `box-shadow 90ms ${MOTION_EASE}, transform 90ms ${MOTION_EASE}`,
             }}
-            onPointerDown={() => setLoginPressed(true)}
+            onPointerDown={() => { tap(); setLoginPressed(true); }}
             onPointerUp={() => setLoginPressed(false)}
             onPointerLeave={() => setLoginPressed(false)}
           >

@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import { tap } from '../../utils/haptics';
 import { useQuery, useMutation } from 'convex/react';
 import { useNavigate } from 'react-router';
 import { api } from '../../../convex/_generated/api';
@@ -403,7 +404,7 @@ function EditMemberModal({ member, onSave, onClose }: {
             <button
               onClick={handleSave}
               disabled={!valid}
-              onPointerDown={() => setPressed(true)}
+              onPointerDown={() => { tap(); setPressed(true); }}
               onPointerUp={() => setPressed(false)}
               onPointerLeave={() => setPressed(false)}
               style={{ height: 48, borderRadius: 14, border: 'none', cursor: valid ? 'pointer' : 'default', background: valid ? '#4a90d9' : '#a8acbe', color: '#fff', fontWeight: 700, fontSize: '14px', boxShadow: pressed && valid ? 'inset 3px 3px 8px rgba(0,0,0,0.22)' : SHD_ACTION_MODAL, transform: pressed && valid ? 'scale(0.97)' : 'scale(1)', transition: 'box-shadow 0.07s, transform 0.07s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
@@ -784,7 +785,7 @@ export default function MembersScreen() {
             <button
               onClick={handleAdd}
               disabled={saveDisabled}
-              onPointerDown={() => setSavePressed(true)}
+              onPointerDown={() => { tap(); setSavePressed(true); }}
               onPointerUp={() => setSavePressed(false)}
               onPointerLeave={() => setSavePressed(false)}
               style={{

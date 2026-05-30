@@ -30,11 +30,16 @@ export async function connectPrinter() {
   printerChar   = await service.getCharacteristic(CHAR_UUID);
 }
 
+const delay = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
+
 async function sendToPrinter(data: Uint8Array) {
-  const CHUNK = 512;
+  const CHUNK = 20;
   for (let i = 0; i < data.length; i += CHUNK) {
     await printerChar!.writeValue(data.slice(i, i + CHUNK));
+    await delay(100);
   }
+  // let the printer drain its UART buffer before we resolve
+  await delay(300);
 }
 
 export async function printReceipt(tx: PrintTransaction) {

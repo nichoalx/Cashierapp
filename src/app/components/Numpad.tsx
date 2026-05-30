@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { Delete, Plus, Check } from 'lucide-react';
 import { useCompact } from '../hooks/useCompact';
+import { tap } from '../../utils/haptics';
 
 interface NumpadProps {
   value: string;
@@ -27,6 +28,7 @@ function NumKey({ label, onClick, style, children, disabled, compact }: {
 
   const handleDown = () => {
     if (disabled) return;
+    tap();
     isDown.current = true;
     setPressed(true);
   };
@@ -82,6 +84,7 @@ function ActionKey({ icon, onClick, color, disabled, style }: {
 
   const handleDown = () => {
     if (disabled) return;
+    tap();
     isDown.current = true;
     setPressed(true);
   };

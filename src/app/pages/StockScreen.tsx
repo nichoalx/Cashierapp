@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
+import { tap, confirmTap } from '../../utils/haptics';
 import { Plus, X, ChevronLeft, ChevronRight, ChevronDown, Calendar, FileSpreadsheet, Check, Pencil } from 'lucide-react';
 import { useQuery, useMutation, useAction } from 'convex/react';
 import { api } from '../../../convex/_generated/api';
@@ -431,7 +432,7 @@ function AddStockModal({
           <button
             onClick={handleAdd}
             disabled={!canAdd}
-            onPointerDown={() => canAdd && setAddPressed(true)}
+            onPointerDown={() => { if (canAdd) { tap(); setAddPressed(true); } }}
             onPointerUp={() => setAddPressed(false)}
             onPointerLeave={() => setAddPressed(false)}
             style={{
@@ -535,7 +536,7 @@ function SetQuantityModal({ s, onClose, onConfirm }: { s: StockRow; onClose: () 
 
           <button
             disabled={!canSave}
-            onPointerDown={() => canSave && setConfirmPressed(true)}
+            onPointerDown={() => { if (canSave) { confirmTap(); setConfirmPressed(true); } }}
             onPointerUp={() => setConfirmPressed(false)}
             onPointerLeave={() => setConfirmPressed(false)}
             onClick={() => { if (canSave) { onConfirm(parsed); onClose(); } }}

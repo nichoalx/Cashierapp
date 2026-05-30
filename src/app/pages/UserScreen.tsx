@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { tap, softTap, confirmTap } from '../../utils/haptics';
 import { useAuth } from '../AuthContext';
 import { ButtonSpinner } from '../components/Loader';
 import { LogOut, Clock, Info, X } from 'lucide-react';
@@ -180,7 +181,7 @@ export default function UserScreen() {
           tabIndex={0}
           className="about-row"
           onClick={() => setShowAbout(true)}
-          onPointerDown={() => setAboutPressed(true)}
+          onPointerDown={() => { softTap(); setAboutPressed(true); }}
           onPointerUp={() => setAboutPressed(false)}
           onPointerLeave={() => setAboutPressed(false)}
           onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && setShowAbout(true)}
@@ -218,7 +219,7 @@ export default function UserScreen() {
         {!showLogoutConfirm ? (
           <button
             onClick={() => setShowLogoutConfirm(true)}
-            onPointerDown={() => setLogoutPressed(true)}
+            onPointerDown={() => { tap(); setLogoutPressed(true); }}
             onPointerUp={() => setLogoutPressed(false)}
             onPointerLeave={() => setLogoutPressed(false)}
             style={{
@@ -261,7 +262,7 @@ export default function UserScreen() {
             <div style={{ display: 'flex', gap: 8 }}>
               <button
                 onClick={() => setShowLogoutConfirm(false)}
-                onPointerDown={() => setCancelPressed(true)}
+                onPointerDown={() => { softTap(); setCancelPressed(true); }}
                 onPointerUp={() => setCancelPressed(false)}
                 onPointerLeave={() => setCancelPressed(false)}
                 style={{
@@ -281,7 +282,7 @@ export default function UserScreen() {
               <button
                 onClick={handleLogout}
                 disabled={isLoggingOut}
-                onPointerDown={() => !isLoggingOut && setConfirmPressed(true)}
+                onPointerDown={() => { if (!isLoggingOut) { confirmTap(); setConfirmPressed(true); } }}
                 onPointerUp={() => setConfirmPressed(false)}
                 onPointerLeave={() => setConfirmPressed(false)}
                 style={{

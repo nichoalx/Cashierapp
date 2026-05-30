@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { tap } from '../../utils/haptics';
 import { useParams, useNavigate } from 'react-router';
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '../../../convex/_generated/api';
@@ -73,7 +74,7 @@ function RecordPaymentModal({
           <button
             onClick={() => { if (valid) { onSave(clamped, date); onClose(); } }}
             disabled={!valid}
-            onPointerDown={() => setPressed(true)}
+            onPointerDown={() => { tap(); setPressed(true); }}
             onPointerUp={() => setPressed(false)}
             onPointerLeave={() => setPressed(false)}
             style={{ height: 48, borderRadius: 14, border: 'none', cursor: valid ? 'pointer' : 'default', background: valid ? '#4a90d9' : '#a8acbe', color: '#fff', fontWeight: 700, fontSize: '14px', boxShadow: pressed && valid ? 'inset 3px 3px 8px rgba(0,0,0,0.22)' : SHD_ACTION, transform: pressed && valid ? 'scale(0.97)' : 'scale(1)', transition: 'box-shadow 0.07s, transform 0.07s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}

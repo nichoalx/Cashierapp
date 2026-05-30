@@ -8,6 +8,7 @@ import { MemberPickerModal } from '../components/MemberPickerModal';
 import { PriceTicker } from '../components/PriceTicker';
 import { PriceEditorModal } from '../components/PriceEditorModal';
 import { printReceipt } from '../../utils/printer';
+import { tap, softTap, confirmTap } from '../../utils/haptics';
 
 const SHD_RAISED_STD    = '4px 4px 9px #c8cad1, -4px -4px 9px #ffffff';
 const SHD_RAISED_LIST   = '3px 3px 7px #c8cad1, -3px -3px 7px rgba(255,255,255,0.92)';
@@ -1085,7 +1086,7 @@ export default function TransactionLogScreen() {
                 }}
                 onClick={() => setExpandedId(expanded ? null : tx.id)}
                 onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpandedId(expanded ? null : tx.id); } }}
-                onPointerDown={() => setPressedRow(tx.id)}
+                onPointerDown={() => { softTap(); setPressedRow(tx.id); }}
                 onPointerUp={() => setPressedRow(null)}
                 onPointerLeave={() => setPressedRow(null)}
               >
@@ -1210,7 +1211,7 @@ export default function TransactionLogScreen() {
                     <button
                       aria-label="Cetak struk"
                       onClick={e => { e.stopPropagation(); setPrintingTx(tx); }}
-                      onPointerDown={() => setPressedBtn(`print_${tx.id}`)}
+                      onPointerDown={() => { tap(); setPressedBtn(`print_${tx.id}`); }}
                       onPointerUp={() => setPressedBtn(null)}
                       onPointerLeave={() => setPressedBtn(null)}
                       style={{
@@ -1227,7 +1228,7 @@ export default function TransactionLogScreen() {
                     </button>
                     <button
                       onClick={(e) => { e.stopPropagation(); setEditingTx(tx); }}
-                      onPointerDown={() => setPressedBtn(`edit_${tx.id}`)}
+                      onPointerDown={() => { tap(); setPressedBtn(`edit_${tx.id}`); }}
                       onPointerUp={() => setPressedBtn(null)}
                       onPointerLeave={() => setPressedBtn(null)}
                       style={{
@@ -1261,7 +1262,7 @@ export default function TransactionLogScreen() {
                             setDeleteConfirm(null);
                             setExpandedId(null);
                           }}
-                          onPointerDown={() => setPressedBtn(`conf_${tx.id}`)}
+                          onPointerDown={() => { confirmTap(); setPressedBtn(`conf_${tx.id}`); }}
                           onPointerUp={() => setPressedBtn(null)}
                           onPointerLeave={() => setPressedBtn(null)}
                           style={{

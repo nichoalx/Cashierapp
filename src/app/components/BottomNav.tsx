@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router';
 import { ShoppingCart, ClipboardList, Package, UserCircle, Users } from 'lucide-react';
+import { softTap } from '../../utils/haptics';
 
 const SHD_RAISED_STD = '4px 4px 9px #c8cad1, -4px -4px 9px #ffffff';
 
@@ -64,7 +65,7 @@ export function BottomNav() {
             <button
               key={tab.path}
               onClick={() => navigate(tab.path)}
-              onPointerDown={() => setPressedPath(tab.path)}
+              onPointerDown={() => { softTap(); setPressedPath(tab.path); }}
               onPointerUp={() => setPressedPath(null)}
               onPointerLeave={() => setPressedPath(null)}
               style={{

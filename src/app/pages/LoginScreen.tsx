@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { tap } from '../../utils/haptics';
 import { useNavigate } from 'react-router';
 import { useAuthActions } from '@convex-dev/auth/react';
 import { useAuth } from '../AuthContext';
@@ -242,7 +243,7 @@ export default function LoginScreen() {
               )}
 
               <button type="submit" disabled={isSubmitting}
-                onPointerDown={() => setSubmitPressed(true)}
+                onPointerDown={() => { tap(); setSubmitPressed(true); }}
                 onPointerUp={() => setSubmitPressed(false)}
                 onPointerLeave={() => setSubmitPressed(false)}
                 style={{
