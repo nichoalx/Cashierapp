@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { Pencil, Trash2, X, Check, ChevronDown, ChevronLeft, ChevronRight, Search, SlidersHorizontal, MessageSquare, User, Receipt, FileSpreadsheet, FileDown, Printer } from 'lucide-react';
+import { Pencil, Trash2, X, Check, ChevronDown, ChevronLeft, ChevronRight, Search, SlidersHorizontal, MessageSquare, User, Receipt, FileSpreadsheet, FileDown, Printer, Clock } from 'lucide-react';
 import { useQuery, useMutation, useAction } from 'convex/react';
 import { api } from '../../../convex/_generated/api';
 import { Id } from '../../../convex/_generated/dataModel';
@@ -849,11 +849,15 @@ export default function TransactionLogScreen() {
   const rawStock   = useQuery(api.stock.list);
   const updateTx   = useMutation(api.transactions.update);
   const removeTx   = useMutation(api.transactions.remove);
-  const syncAll    = useAction(api.sheetsSync.syncAll);
+  const syncAll          = useAction(api.sheetsSync.syncAll);
+  const takeSnapshot     = useMutation(api.sheetsSyncData.takeSnapshotNow);
+  const reconstructSnap  = useMutation(api.sheetsSyncData.reconstructSnapshotForDate);
 
   const [sheetsSyncState, setSheetsSyncState] = useState<'idle' | 'syncing' | 'done' | 'error'>('idle');
   const [sheetsSyncError, setSheetsSyncError] = useState<string | null>(null);
   const sheetsResetRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [reconstructState, setReconstructState] = useState<'idle' | 'syncing' | 'done' | 'error'>('idle');
+  const reconstructResetRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleSheetsSync = async () => {
     if (sheetsSyncState === 'syncing') return;
@@ -874,6 +878,23 @@ export default function TransactionLogScreen() {
   };
 
   useEffect(() => () => { if (sheetsResetRef.current) clearTimeout(sheetsResetRef.current); }, []);
+
+  const handleReconstruct = async () => {
+    if (reconstructState === 'syncing') return;
+    setReconstructState('syncing');
+    try {
+      await reconstructSnap({ date: toDateStr(selectedDate) });
+      setReconstructState('done');
+      if (reconstructResetRef.current) clearTimeout(reconstructResetRef.current);
+      reconstructResetRef.current = setTimeout(() => setReconstructState('idle'), 2200);
+    } catch {
+      setReconstructState('error');
+      if (reconstructResetRef.current) clearTimeout(reconstructResetRef.current);
+      reconstructResetRef.current = setTimeout(() => setReconstructState('idle'), 3000);
+    }
+  };
+
+  useEffect(() => () => { if (reconstructResetRef.current) clearTimeout(reconstructResetRef.current); }, []);
 
   const members: Member[] = useMemo(() =>
     (rawMembers ?? []).map(m => ({
@@ -939,6 +960,13 @@ export default function TransactionLogScreen() {
   }, []);
 
   useEffect(() => { pendingDeleteRef.current = pendingDelete; }, [pendingDelete]);
+
+  // Automatically snapshot today's stock whenever the user views today — no manual daily sync needed
+  useEffect(() => {
+    if (isSameDay(selectedDate, new Date())) {
+      takeSnapshot().catch(() => {});
+    }
+  }, [selectedDate, takeSnapshot]);
 
   useEffect(() => {
     return () => {
@@ -1581,6 +1609,38 @@ export default function TransactionLogScreen() {
                 </button>
                 <span style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5', letterSpacing: '0.03em' }}>CSV</span>
               </div>
+
+              {!isSameDay(selectedDate, new Date()) && (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5 }}>
+                  <button
+                    aria-label="Rekonstruksi stok"
+                    title="Hitung stok hari ini berdasarkan transaksi setelah tanggal ini"
+                    disabled={reconstructState === 'syncing'}
+                    onClick={e => { e.stopPropagation(); handleReconstruct(); }}
+                    onPointerDown={() => setPressedBtn('slide3_recon')}
+                    onPointerUp={() => setPressedBtn(null)}
+                    onPointerLeave={() => setPressedBtn(null)}
+                    style={{
+                      width: 44, height: 44, borderRadius: '50%', border: 'none',
+                      cursor: reconstructState === 'syncing' ? 'default' : 'pointer',
+                      background: '#eef0f5',
+                      boxShadow: pressedBtn === 'slide3_recon' || reconstructState === 'syncing' ? SHD_RECESSED : SHD_RAISED_STD,
+                      transform: pressedBtn === 'slide3_recon' ? 'scale(0.93)' : 'scale(1)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      transition: 'box-shadow 0.07s, transform 0.07s',
+                    }}
+                  >
+                    {reconstructState === 'syncing' ? (
+                      <div style={{ width: 14, height: 14, borderRadius: '50%', border: '2px solid #c0c4d0', borderTopColor: '#9a9db5', animation: 'sheets-sync-spin 0.7s linear infinite' }} />
+                    ) : reconstructState === 'done' ? (
+                      <Check size={14} color="#52b96a" />
+                    ) : (
+                      <Clock size={14} color={reconstructState === 'error' ? '#d4183d' : '#9a9db5'} />
+                    )}
+                  </button>
+                  <span style={{ fontSize: '9px', fontWeight: 600, color: '#9a9db5', letterSpacing: '0.03em' }}>Stok</span>
+                </div>
+              )}
             </div>
           </div>
         </div>

@@ -119,6 +119,13 @@ export default defineSchema({
     timestamp: v.number(),
   }).index("by_timestamp", ["timestamp"]),
 
+  stockCorrections: defineTable({
+    productId: v.id("products"),
+    variantId: v.optional(v.id("productVariants")),
+    delta: v.number(),   // positive = added, negative = reduced
+    timestamp: v.number(),
+  }).index("by_timestamp", ["timestamp"]),
+
   // ─── Stock Snapshots (for daily history in Sheets sync) ──────────────────────
   // Written by the Sheets sync action — one row per (date, product/variant).
   // Captures the stock level at sync time so the sheet has real historical data

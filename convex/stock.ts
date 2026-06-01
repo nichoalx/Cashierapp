@@ -91,7 +91,45 @@ export const setQuantity = mutation({
     const userId = await getAuthUserId(ctx);
     if (!userId) throw new Error("Unauthorized");
     if (args.quantity < 0) throw new Error("Quantity cannot be negative");
+    const stockEntry = await ctx.db.get(args.stockId);
+    if (!stockEntry) throw new Error("Stock entry not found");
+    const delta = args.quantity - stockEntry.quantity;
     await ctx.db.patch(args.stockId, { quantity: args.quantity });
+    if (delta !== 0) {
+      await ctx.db.insert("stockCorrections", {
+        productId: stockEntry.productId,
+        variantId: stockEntry.variantId,
+        delta,
+        timestamp: Date.now(),
+      });
+    }
+  },
+});
+
+export const listCorrections = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return null;
+    const corrections = await ctx.db
+      .query("stockCorrections")
+      .withIndex("by_timestamp")
+      .order("desc")
+      .take(100);
+    return Promise.all(corrections.map(async (c) => {
+      const product = await ctx.db.get(c.productId);
+      const variant = c.variantId ? await ctx.db.get(c.variantId) : null;
+      const productName = variant
+        ? `${product?.fullName ?? '?'} ${variant.variantValue}`
+        : (product?.fullName ?? 'Unknown');
+      return {
+        id: c._id,
+        productName,
+        delta: c.delta,
+        unit: product?.unit ?? 'pcs',
+        timestamp: c.timestamp,
+      };
+    }));
   },
 });
 

@@ -41,6 +41,16 @@ interface AdditionRow {
   timestamp: Date;
 }
 
+interface CorrectionRow {
+  id: Id<'stockCorrections'>;
+  productName: string;
+  delta: number;
+  unit: string;
+  timestamp: Date;
+}
+
+type HistoryRow = ({ kind: 'addition' } & AdditionRow) | ({ kind: 'correction' } & CorrectionRow);
+
 function isSameDay(a: Date, b: Date) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
@@ -720,6 +730,27 @@ function AdditionEntry({ entry, index }: { entry: AdditionRow; index: number }) 
   );
 }
 
+// ─────────── Correction Entry ───────────
+function CorrectionEntry({ entry, index }: { entry: CorrectionRow; index: number }) {
+  const time = new Intl.DateTimeFormat('id-ID', { hour: '2-digit', minute: '2-digit' }).format(entry.timestamp);
+  const sign = entry.delta > 0 ? '+' : '';
+  const color = entry.delta > 0 ? '#52b96a' : '#d4a017';
+  const qty = Math.abs(entry.delta) % 1 === 0 ? Math.abs(entry.delta) : Math.abs(entry.delta).toFixed(1);
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0',
+      animation: 'entry-in 160ms cubic-bezier(0.22, 1, 0.36, 1) both',
+      animationDelay: `${Math.min(index, 8) * 35}ms`,
+    }}>
+      <div style={{ width: 7, height: 7, borderRadius: '2px', background: '#d4a017', flexShrink: 0 }} />
+      <span style={{ flex: 1, fontSize: '12px', fontWeight: 600, color: '#2d3142' }}>{entry.productName}</span>
+      <span style={{ fontSize: '10px', color: '#b0b4c8', fontWeight: 600, marginRight: 2 }}>koreksi</span>
+      <span style={{ fontSize: '11px', color, fontWeight: 700 }}>{sign}{entry.delta % 1 === 0 ? entry.delta : entry.delta.toFixed(1)} {entry.unit}</span>
+      <span style={{ fontSize: '10px', color: '#c0c4d0', minWidth: 36 }}>{time}</span>
+    </div>
+  );
+}
+
 // ─────────── Skeleton ───────────
 function SkeletonBox({ w, h, r = 8, mt = 0 }: { w?: string | number; h: number; r?: number; mt?: number }) {
   return (
@@ -764,8 +795,9 @@ function StockScreenSkeleton() {
 
 // ─────────── Main Screen ───────────
 export default function StockScreen() {
-  const rawStock     = useQuery(api.stock.list);
-  const rawAdditions = useQuery(api.stock.listAdditions);
+  const rawStock       = useQuery(api.stock.list);
+  const rawAdditions   = useQuery(api.stock.listAdditions);
+  const rawCorrections = useQuery(api.stock.listCorrections);
   const undoAdditionMutation = useMutation(api.stock.undoAddition);
   const setQuantityMutation  = useMutation(api.stock.setQuantity);
   const syncAll              = useAction(api.sheetsSync.syncAll);
@@ -829,6 +861,22 @@ export default function StockScreen() {
     }));
   }, [rawAdditions]);
 
+  const history: HistoryRow[] = useMemo(() => {
+    const rows: HistoryRow[] = [
+      ...additions.map(a => ({ kind: 'addition' as const, ...a })),
+      ...(rawCorrections ?? []).map(c => ({
+        kind: 'correction' as const,
+        id: c.id as Id<'stockCorrections'>,
+        productName: c.productName,
+        delta: c.delta,
+        unit: c.unit,
+        timestamp: new Date(c.timestamp),
+      })),
+    ];
+    rows.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+    return rows;
+  }, [additions, rawCorrections]);
+
   const handleStockAdded = (result: AdditionResult) => {
     if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
     setUndoState({ result, startedAt: Date.now() });
@@ -852,20 +900,20 @@ export default function StockScreen() {
   const criticalCount = stockItems.filter(s => s.quantity <= s.minThreshold).length;
   const lowCount      = stockItems.filter(s => s.quantity > s.minThreshold && s.quantity <= s.minThreshold * 3).length;
 
-  const additionDates = useMemo(() => additions.map(a => a.timestamp), [additions]);
+  const additionDates = useMemo(() => history.map(a => a.timestamp), [history]);
 
-  const filteredAdditions = useMemo(() => {
-    if (!historyDate) return additions.slice(0, 20);
-    return additions.filter(a => isSameDay(a.timestamp, historyDate));
-  }, [additions, historyDate]);
+  const filteredHistory = useMemo(() => {
+    if (!historyDate) return history.slice(0, 20);
+    return history.filter(a => isSameDay(a.timestamp, historyDate));
+  }, [history, historyDate]);
 
-  const groupedAdditions = useMemo(() => {
+  const groupedHistory = useMemo(() => {
     if (historyDate) return null;
     const today = new Date();
     const yesterday = new Date(today);
     yesterday.setDate(today.getDate() - 1);
-    const groups: { label: string; entries: AdditionRow[] }[] = [];
-    filteredAdditions.forEach(entry => {
+    const groups: { label: string; entries: HistoryRow[] }[] = [];
+    filteredHistory.forEach(entry => {
       let label: string;
       if (isSameDay(entry.timestamp, today)) label = 'Hari Ini';
       else if (isSameDay(entry.timestamp, yesterday)) label = 'Kemarin';
@@ -878,7 +926,7 @@ export default function StockScreen() {
       else last.entries.push(entry);
     });
     return groups;
-  }, [filteredAdditions, historyDate]);
+  }, [filteredHistory, historyDate]);
 
   if (rawStock === undefined) return <StockScreenSkeleton />;
 
@@ -1013,7 +1061,7 @@ export default function StockScreen() {
           />
 
           <div style={{ marginTop: 10 }}>
-            {filteredAdditions.length === 0 ? (
+            {filteredHistory.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '16px 0', color: '#c0c4d0', fontSize: '12px' }}>
                 {historyDate ? 'Tidak ada penambahan pada tanggal ini' : 'Belum ada riwayat'}
               </div>
@@ -1021,24 +1069,32 @@ export default function StockScreen() {
               <>
                 {historyDate && (
                   <div style={{ fontSize: '10px', color: '#9a9db5', marginBottom: 6 }}>
-                    {MONTHS[historyDate.getMonth()]} {historyDate.getDate()}, {historyDate.getFullYear()} · {filteredAdditions.length} entri
+                    {MONTHS[historyDate.getMonth()]} {historyDate.getDate()}, {historyDate.getFullYear()} · {filteredHistory.length} entri
                   </div>
                 )}
                 <div key={historyDate?.toISOString() ?? 'all'} style={{ display: 'flex', flexDirection: 'column' }}>
                   {historyDate
-                    ? filteredAdditions.map((entry, i) => <AdditionEntry key={entry.id} entry={entry} index={i} />)
-                    : (groupedAdditions ?? []).map((group, gi) => (
+                    ? filteredHistory.map((entry, i) =>
+                        entry.kind === 'correction'
+                          ? <CorrectionEntry key={entry.id} entry={entry} index={i} />
+                          : <AdditionEntry key={entry.id} entry={entry} index={i} />
+                      )
+                    : (groupedHistory ?? []).map((group, gi) => (
                         <div key={group.label}>
                           {gi > 0 && <div style={{ height: 1, background: '#e8eaf0', margin: '6px 0' }} />}
                           <div style={{ fontSize: '9px', fontWeight: 600, color: '#c0c4d0', letterSpacing: '0.08em', textTransform: 'uppercase', padding: '4px 0 2px' }}>
                             {group.label}
                           </div>
-                          {group.entries.map((entry, i) => <AdditionEntry key={entry.id} entry={entry} index={i} />)}
+                          {group.entries.map((entry, i) =>
+                            entry.kind === 'correction'
+                              ? <CorrectionEntry key={entry.id} entry={entry} index={i} />
+                              : <AdditionEntry key={entry.id} entry={entry} index={i} />
+                          )}
                         </div>
                       ))
                   }
                 </div>
-                {!historyDate && additions.length > 20 && (
+                {!historyDate && history.length > 20 && (
                   <div style={{ textAlign: 'center', padding: '10px 0 2px', fontSize: '10px', color: '#c0c4d0' }}>
                     Menampilkan 20 entri terbaru · Filter tanggal untuk melihat riwayat
                   </div>

@@ -29,6 +29,13 @@ function formatDateDMY(isoDate: string): string {
   return `${d}-${m}-${y}`;
 }
 
+function previousDate(isoDate: string): string {
+  const [year, month, day] = isoDate.split("-").map(Number);
+  const previous = new Date(Date.UTC(year, month - 1, day));
+  previous.setUTCDate(previous.getUTCDate() - 1);
+  return previous.toISOString().slice(0, 10);
+}
+
 function getSheetsClient() {
   const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
   const sheetId = process.env.GOOGLE_SHEET_ID;
@@ -97,6 +104,49 @@ async function writeTab(
   });
 }
 
+async function readStockAmountsFromSheet(
+  sheets: ReturnType<typeof google.sheets>,
+  spreadsheetId: string,
+  date: string,
+): Promise<Map<string, number> | null> {
+  const tab = tabNameForMonth(date.slice(0, 7));
+  try {
+    const res = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: `'${tab}'!M:O`,
+      valueRenderOption: "UNFORMATTED_VALUE",
+    });
+    const rows = res.data.values ?? [];
+    const quantities = new Map<string, number>();
+    let inDateBlock = false;
+
+    for (const row of rows) {
+      const label = row[0] == null ? "" : String(row[0]).trim();
+      const amount = row[1];
+      const isDateHeader = /^\d{4}-\d{2}-\d{2}$/.test(label) && row[1] === "AMOUNT";
+
+      if (isDateHeader) {
+        if (inDateBlock) break;
+        inDateBlock = label === date;
+        continue;
+      }
+      if (!inDateBlock) continue;
+      if (!label) break;
+
+      const quantity = typeof amount === "number"
+        ? amount
+        : Number(String(amount ?? "").replace(/,/g, ""));
+      if (Number.isFinite(quantity)) {
+        quantities.set(label, quantity);
+      }
+    }
+
+    return quantities.size > 0 ? quantities : null;
+  } catch {
+    return null;
+  }
+}
+
 // ─── Build monthly grid ──────────────────────────────────────────────────────
 
 async function buildMonthGrid(args: {
@@ -112,9 +162,14 @@ async function buildMonthGrid(args: {
     items: Array<{ productName: string; quantity: number; unit: string; unitPrice: number; totalAmount: number }>;
   }>;
   snapshots: Array<{ date: string; productId: Id<"products">; variantId?: Id<"productVariants">; quantity: number }>;
+  prevMonthSnapshots: Array<{ date: string; productId: Id<"products">; variantId?: Id<"productVariants">; quantity: number }>;
   productInfo: Array<{ productId: Id<"products">; variantId?: Id<"productVariants">; label: string; unit: string }>;
-  paymentDetails: Array<{ orderNumber: number; txDate: string; memberName: string; txTotal: number; paymentDate: string; amount: number; balance: number }>;
-}): Promise<{ grid: (string | number)[][]; stockHeaderRows: number[]; dateHeaderRows: number[]; txGroupRanges: Array<{ startRow: number; endRow: number; isCredit: boolean }>; totalRowIndices: number[]; stockRowCount: number; paymentRowCount: number; paymentGroupRanges: Array<{ startRow: number; endRow: number }>; txRowMap: Map<number, number>; paymentMeta: Array<{ orderNum: number; txDate: string }> }> {
+  paymentDetails: Array<{ orderNumber: number; txDate: string; memberName: string; txTotal: number; amountPaid: number; paymentDate: string; amount: number; balance: number }>;
+  priceHistory: Array<{ productId: Id<"products">; variantId?: Id<"productVariants">; oldPrice: number; newPrice: number; changedAt: number }>;
+  currentPrices: Array<{ productId: Id<"products">; variantId?: Id<"productVariants">; price: number }>;
+  priceProducts: Array<{ productId: Id<"products">; label: string }>;
+  previousSheetStock?: { date: string; quantitiesByLabel: Map<string, number> } | null;
+}): Promise<{ grid: (string | number)[][]; stockHeaderRows: number[]; dateHeaderRows: number[]; txGroupRanges: Array<{ startRow: number; endRow: number; isCredit: boolean }>; totalRowIndices: number[]; stockRowCount: number; paymentRowCount: number; paymentGroupRanges: Array<{ startRow: number; endRow: number }>; txRowMap: Map<string, number>; paymentMeta: Array<{ orderNum: number; txDate: string }>; priceHistoryHeaderRows: number[]; priceHistoryRowCount: number }> {
   const txHeader: string[] = [
     "Order", "Time", "Product", "Qty", "Unit",
     "Unit Price", "Item Total", "Discount", "Tx Total", "Member", "Remarks",
@@ -122,7 +177,7 @@ async function buildMonthGrid(args: {
   const txRows: (string | number)[][] = [];
   const dateHeaderTxIndices: number[] = [];
   const txGroupRanges: Array<{ startRow: number; endRow: number; isCredit: boolean }> = [];
-  const txRowMap = new Map<number, number>(); // orderNumber → grid row (1-indexed, for Sheets API)
+  const txRowMap = new Map<string, number>(); // txDate::orderNumber → grid row (1-indexed, for Sheets API)
   const totalRowIndices: number[] = [];
 
   const txByDate = new Map<string, typeof args.txDetails>();
@@ -159,7 +214,7 @@ async function buildMonthGrid(args: {
       // +1 converts txRows index → grid row (grid row 0 is the header)
       // endRow is exclusive (Sheets API convention)
       txGroupRanges.push({ startRow: txStartIdx + 1, endRow: txRows.length + 1, isCredit: tx.amountPaid < tx.totalAmount });
-      txRowMap.set(tx.orderNumber, txStartIdx + 1);
+      txRowMap.set(`${tx.date}::${tx.orderNumber}`, txStartIdx + 1);
     }
     // Daily total row — placed after all transactions for the date
     const dayTotal = txByDate.get(date)!.reduce((sum, tx) => sum + tx.totalAmount, 0);
@@ -181,16 +236,29 @@ async function buildMonthGrid(args: {
     inner.set(key, s.quantity);
   }
 
+  // Previous month snapshot baseline for cross-month delta on the first date
+  const prevByKey = new Map<string, number>();
+  for (const s of args.prevMonthSnapshots) {
+    prevByKey.set(snapKey(s.productId, s.variantId), s.quantity);
+  }
+  const hasPrevBaseline = prevByKey.size > 0;
+
   const stockColumn: Array<{ a: string; b: string | number; c: string | number; isHeader?: boolean }> = [];
   for (let i = 0; i < dates.length; i++) {
     const date = dates[i];
     const prevDate = i > 0 ? dates[i - 1] : null;
-    const showDelta = prevDate !== null;
+    const previousSheetStock = i === 0 && args.previousSheetStock?.date === previousDate(date)
+      ? args.previousSheetStock
+      : null;
+    const showDelta = prevDate !== null || previousSheetStock !== null || (i === 0 && hasPrevBaseline);
     stockColumn.push({ a: date, b: "AMOUNT", c: showDelta ? "Δ" : "", isHeader: true });
     for (const p of args.productInfo) {
       const key = snapKey(p.productId, p.variantId);
       const qty = byDate.get(date)?.get(key) ?? 0;
-      const prevQty = prevDate ? (byDate.get(prevDate)?.get(key) ?? 0) : 0;
+      const prevQty = prevDate
+        ? (byDate.get(prevDate)?.get(key) ?? 0)
+        : (previousSheetStock?.quantitiesByLabel.get(p.label)
+          ?? (i === 0 && hasPrevBaseline ? (prevByKey.get(key) ?? 0) : 0));
       const delta = showDelta ? qty - prevQty : 0;
       stockColumn.push({
         a: p.label,
@@ -207,7 +275,7 @@ async function buildMonthGrid(args: {
     return d !== 0 ? d : a.orderNumber - b.orderNumber;
   });
   const paymentColumn: (string | number)[][] = sortedPayments.map(p => [
-    p.orderNumber, p.txDate, p.memberName, Math.round(p.txTotal), p.paymentDate, Math.round(p.amount), Math.round(p.balance),
+    p.orderNumber, p.txDate, p.memberName, Math.round(p.txTotal), Math.round(p.amountPaid), p.paymentDate, Math.round(p.amount), Math.round(p.balance),
   ]);
   const paymentGroupRanges: Array<{ startRow: number; endRow: number }> = [];
   const paymentMeta: Array<{ orderNum: number; txDate: string }> = [];
@@ -224,11 +292,50 @@ async function buildMonthGrid(args: {
     }
   }
 
+  // Price history column (Y–Z, indices 24–25)
+  const nonVariantHistory = args.priceHistory.filter(h => !h.variantId);
+  const fmtDMY = (ts: number) => {
+    const d = new Date(ts);
+    return `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()}`;
+  };
+  const priceAt = (productId: Id<"products">, t: number): number => {
+    const entries = nonVariantHistory
+      .filter(h => h.productId === productId)
+      .sort((a, b) => a.changedAt - b.changedAt);
+    const before = entries.filter(e => e.changedAt <= t);
+    if (before.length > 0) return before[before.length - 1].newPrice;
+    if (entries.length > 0) return entries[0].oldPrice;
+    return args.currentPrices.find(p => p.productId === productId && !p.variantId)?.price ?? 0;
+  };
+  const rawBreakpoints = [...new Set(nonVariantHistory.map(h => h.changedAt))].sort((a, b) => a - b);
+  // Remove breakpoints where no product price actually changed (e.g. accidental same-value edits)
+  const priceSetKey = (ts: number) => args.priceProducts.map(p => `${p.productId}:${priceAt(p.productId, ts)}`).join('|');
+  const breakpoints: number[] = [];
+  for (const bp of rawBreakpoints) {
+    if (breakpoints.length === 0 || priceSetKey(bp) !== priceSetKey(breakpoints[breakpoints.length - 1])) {
+      breakpoints.push(bp);
+    }
+  }
+  const priceHistoryColumn: (string | number)[][] = [];
+  const priceHistoryHeaderRows: number[] = [];
+  const nowTs = Date.now();
+  for (let i = 0; i < breakpoints.length; i++) {
+    const start = breakpoints[i];
+    const end = breakpoints[i + 1] ?? nowTs;
+    priceHistoryHeaderRows.push(priceHistoryColumn.length + 1); // +1 for grid header row
+    priceHistoryColumn.push([`${fmtDMY(start)} - ${fmtDMY(end)}`, ""]);
+    for (const p of args.priceProducts) {
+      priceHistoryColumn.push([p.label, priceAt(p.productId, start)]);
+    }
+    priceHistoryColumn.push(["", ""]); // separator
+  }
+
   const LEFT_COLS = 11;
   const GAP = 1;
   const PAYMENT_GAP = 1;
-  const PAYMENT_COLS = 7;
-  const totalRows = Math.max(1 + txRows.length, stockColumn.length, sortedPayments.length, 1);
+  const PAYMENT_COLS = 8;
+  const PRICE_HISTORY_GAP = 1;
+  const totalRows = Math.max(1 + txRows.length, stockColumn.length, sortedPayments.length, priceHistoryColumn.length, 1);
   const grid: (string | number)[][] = [];
   const stockHeaderRows: number[] = [];
 
@@ -236,7 +343,9 @@ async function buildMonthGrid(args: {
     ...txHeader, ...Array(GAP).fill(""),
     "Stocks", "AMOUNT", "Δ",
     ...Array(PAYMENT_GAP).fill(""),
-    "Order #", "Tx Date", "Member", "Tx Total", "Payment Date", "Amount", "Sisa",
+    "Order #", "Tx Date", "Member", "Tx Total", "Dibayar Awal", "Payment Date", "Amount", "Sisa",
+    ...Array(PRICE_HISTORY_GAP).fill(""),
+    "Harga", "",
   ]);
 
   for (let r = 1; r < totalRows + 1; r++) {
@@ -244,12 +353,14 @@ async function buildMonthGrid(args: {
     const stock = stockColumn[r - 1];
     const right: (string | number)[] = stock ? [stock.a, stock.b, stock.c] : ["", "", ""];
     const payment = paymentColumn[r - 1] ?? Array(PAYMENT_COLS).fill("");
+    const ph = priceHistoryColumn[r - 1];
+    const priceHistoryRow: (string | number)[] = ph ? [ph[0], ph[1]] : ["", ""];
     if (stock?.isHeader) stockHeaderRows.push(r);
-    grid.push([...left, ...Array(GAP).fill(""), ...right, ...Array(PAYMENT_GAP).fill(""), ...payment]);
+    grid.push([...left, ...Array(GAP).fill(""), ...right, ...Array(PAYMENT_GAP).fill(""), ...payment, ...Array(PRICE_HISTORY_GAP).fill(""), ...priceHistoryRow]);
   }
 
   const dateHeaderRows = dateHeaderTxIndices.map(i => i + 1); // +1 for the column header row
-  return { grid, stockHeaderRows, dateHeaderRows, txGroupRanges, totalRowIndices, stockRowCount: stockColumn.length, paymentRowCount: sortedPayments.length, paymentGroupRanges, txRowMap, paymentMeta };
+  return { grid, stockHeaderRows, dateHeaderRows, txGroupRanges, totalRowIndices, stockRowCount: stockColumn.length, paymentRowCount: sortedPayments.length, paymentGroupRanges, txRowMap, paymentMeta, priceHistoryHeaderRows, priceHistoryRowCount: priceHistoryColumn.length };
 }
 
 // ─── Formatting ──────────────────────────────────────────────────────────────
@@ -293,6 +404,8 @@ async function applyMonthFormatting(
   stockRowCount: number,
   paymentRowCount: number,
   paymentGroupRanges: Array<{ startRow: number; endRow: number }>,
+  priceHistoryHeaderRows: number[],
+  priceHistoryRowCount: number,
 ): Promise<void> {
   const requests: SheetsRequest[] = [];
 
@@ -305,7 +418,7 @@ async function applyMonthFormatting(
   });
   requests.push({
     unmergeCells: {
-      range: { sheetId, startRowIndex: 1, endRowIndex: BLAST_ROWS, startColumnIndex: 16, endColumnIndex: 23 },
+      range: { sheetId, startRowIndex: 1, endRowIndex: BLAST_ROWS, startColumnIndex: 16, endColumnIndex: 24 },
     },
   });
 
@@ -325,9 +438,21 @@ async function applyMonthFormatting(
   });
   requests.push({
     repeatCell: {
-      range: { sheetId, startRowIndex: 1, endRowIndex: BLAST_ROWS, startColumnIndex: 16, endColumnIndex: 23 },
+      range: { sheetId, startRowIndex: 1, endRowIndex: BLAST_ROWS, startColumnIndex: 16, endColumnIndex: 24 },
       cell: { userEnteredFormat: { backgroundColor: { red: 1, green: 1, blue: 1 } } },
       fields: "userEnteredFormat.backgroundColor",
+    },
+  });
+  requests.push({
+    unmergeCells: {
+      range: { sheetId, startRowIndex: 1, endRowIndex: BLAST_ROWS, startColumnIndex: 24, endColumnIndex: 27 },
+    },
+  });
+  requests.push({
+    repeatCell: {
+      range: { sheetId, startRowIndex: 1, endRowIndex: BLAST_ROWS, startColumnIndex: 24, endColumnIndex: 27 },
+      cell: { userEnteredFormat: { backgroundColor: { red: 1, green: 1, blue: 1 }, textFormat: { bold: false } } },
+      fields: "userEnteredFormat(backgroundColor,textFormat)",
     },
   });
 
@@ -551,10 +676,10 @@ async function applyMonthFormatting(
     });
   }
 
-  // Payment table — header (row 0, cols Q–W = 16–23), distinct slate-blue colour
+  // Payment table — header (row 0, cols Q–X = 16–24), distinct slate-blue colour
   requests.push({
     repeatCell: {
-      range: { sheetId, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 16, endColumnIndex: 23 },
+      range: { sheetId, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 16, endColumnIndex: 24 },
       cell: {
         userEnteredFormat: {
           backgroundColor: COLORS.paymentHeaderBg,
@@ -567,16 +692,16 @@ async function applyMonthFormatting(
     },
   });
 
-  // Payment data rows — center + middle (cols Q–W = 16–23)
+  // Payment data rows — center + middle (cols Q–X = 16–24)
   requests.push({
     repeatCell: {
-      range: { sheetId, startRowIndex: 1, endRowIndex: totalRows, startColumnIndex: 16, endColumnIndex: 23 },
+      range: { sheetId, startRowIndex: 1, endRowIndex: totalRows, startColumnIndex: 16, endColumnIndex: 24 },
       cell: { userEnteredFormat: { horizontalAlignment: "CENTER", verticalAlignment: "MIDDLE" } },
       fields: "userEnteredFormat(horizontalAlignment,verticalAlignment)",
     },
   });
 
-  // Tx Total (col T = 19), Amount (col V = 21), Sisa (col W = 22) — currency format
+  // Tx Total (T=19), Dibayar Awal (U=20), Amount (W=22), Sisa (X=23) — currency format
   requests.push({
     repeatCell: {
       range: { sheetId, startRowIndex: 1, endRowIndex: totalRows, startColumnIndex: 19, endColumnIndex: 20 },
@@ -586,7 +711,7 @@ async function applyMonthFormatting(
   });
   requests.push({
     repeatCell: {
-      range: { sheetId, startRowIndex: 1, endRowIndex: totalRows, startColumnIndex: 21, endColumnIndex: 22 },
+      range: { sheetId, startRowIndex: 1, endRowIndex: totalRows, startColumnIndex: 20, endColumnIndex: 21 },
       cell: { userEnteredFormat: { numberFormat: { type: "NUMBER", pattern: '"Rp "#,##0' } } },
       fields: "userEnteredFormat.numberFormat",
     },
@@ -594,6 +719,13 @@ async function applyMonthFormatting(
   requests.push({
     repeatCell: {
       range: { sheetId, startRowIndex: 1, endRowIndex: totalRows, startColumnIndex: 22, endColumnIndex: 23 },
+      cell: { userEnteredFormat: { numberFormat: { type: "NUMBER", pattern: '"Rp "#,##0' } } },
+      fields: "userEnteredFormat.numberFormat",
+    },
+  });
+  requests.push({
+    repeatCell: {
+      range: { sheetId, startRowIndex: 1, endRowIndex: totalRows, startColumnIndex: 23, endColumnIndex: 24 },
       cell: { userEnteredFormat: { numberFormat: { type: "NUMBER", pattern: '"Rp "#,##0;;' } } },
       fields: "userEnteredFormat.numberFormat",
     },
@@ -603,7 +735,7 @@ async function applyMonthFormatting(
   requests.push({
     addConditionalFormatRule: {
       rule: {
-        ranges: [{ sheetId, startRowIndex: 1, endRowIndex: totalRows, startColumnIndex: 22, endColumnIndex: 23 }],
+        ranges: [{ sheetId, startRowIndex: 1, endRowIndex: totalRows, startColumnIndex: 23, endColumnIndex: 24 }],
         booleanRule: {
           condition: { type: "NUMBER_EQ", values: [{ userEnteredValue: "0" }] },
           format: { textFormat: { foregroundColor: COLORS.positive, bold: true } },
@@ -615,7 +747,7 @@ async function applyMonthFormatting(
   requests.push({
     addConditionalFormatRule: {
       rule: {
-        ranges: [{ sheetId, startRowIndex: 1, endRowIndex: totalRows, startColumnIndex: 22, endColumnIndex: 23 }],
+        ranges: [{ sheetId, startRowIndex: 1, endRowIndex: totalRows, startColumnIndex: 23, endColumnIndex: 24 }],
         booleanRule: {
           condition: { type: "NUMBER_GREATER", values: [{ userEnteredValue: "0" }] },
           format: { textFormat: { foregroundColor: { red: 212 / 255, green: 160 / 255, blue: 23 / 255 }, bold: true } },
@@ -651,6 +783,78 @@ async function applyMonthFormatting(
     },
   });
 
+  // Price history section header (row 0, cols Z–AA = 25–26)
+  requests.push({
+    repeatCell: {
+      range: { sheetId, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 25, endColumnIndex: 27 },
+      cell: {
+        userEnteredFormat: {
+          backgroundColor: COLORS.stockHeaderBg,
+          textFormat: { foregroundColor: COLORS.stockHeaderFg, bold: true, fontSize: 10 },
+          horizontalAlignment: "CENTER",
+          verticalAlignment: "MIDDLE",
+        },
+      },
+      fields: "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment)",
+    },
+  });
+  requests.push({
+    mergeCells: {
+      range: { sheetId, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 25, endColumnIndex: 27 },
+      mergeType: "MERGE_ALL",
+    },
+  });
+
+  // Price history period header rows — date range band
+  for (const rowIdx of priceHistoryHeaderRows) {
+    requests.push({
+      repeatCell: {
+        range: { sheetId, startRowIndex: rowIdx, endRowIndex: rowIdx + 1, startColumnIndex: 25, endColumnIndex: 27 },
+        cell: {
+          userEnteredFormat: {
+            backgroundColor: COLORS.dateBandBg,
+            textFormat: { foregroundColor: COLORS.dateBandFg, bold: true, fontSize: 9 },
+            horizontalAlignment: "CENTER",
+            verticalAlignment: "MIDDLE",
+          },
+        },
+        fields: "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment)",
+      },
+    });
+    requests.push({
+      mergeCells: {
+        range: { sheetId, startRowIndex: rowIdx, endRowIndex: rowIdx + 1, startColumnIndex: 25, endColumnIndex: 27 },
+        mergeType: "MERGE_ALL",
+      },
+    });
+  }
+
+  // Price history data: center + middle for col Z (label), currency for col AA (price)
+  if (priceHistoryRowCount > 0) {
+    requests.push({
+      repeatCell: {
+        range: { sheetId, startRowIndex: 1, endRowIndex: priceHistoryRowCount + 1, startColumnIndex: 25, endColumnIndex: 27 },
+        cell: { userEnteredFormat: { horizontalAlignment: "CENTER", verticalAlignment: "MIDDLE" } },
+        fields: "userEnteredFormat(horizontalAlignment,verticalAlignment)",
+      },
+    });
+    requests.push({
+      repeatCell: {
+        range: { sheetId, startRowIndex: 1, endRowIndex: priceHistoryRowCount + 1, startColumnIndex: 26, endColumnIndex: 27 },
+        cell: { userEnteredFormat: { numberFormat: { type: "NUMBER", pattern: '"Rp "#,##0' } } },
+        fields: "userEnteredFormat.numberFormat",
+      },
+    });
+    const phBorder = { style: "SOLID", color: COLORS.divider };
+    requests.push({
+      updateBorders: {
+        range: { sheetId, startRowIndex: 0, endRowIndex: priceHistoryRowCount + 1, startColumnIndex: 25, endColumnIndex: 27 },
+        top: phBorder, bottom: phBorder, left: phBorder, right: phBorder,
+        innerHorizontal: phBorder, innerVertical: phBorder,
+      },
+    });
+  }
+
   // Column widths
   const widths = [
     55,   // A Order
@@ -673,9 +877,13 @@ async function applyMonthFormatting(
     90,   // R Tx Date
     130,  // S Member
     105,  // T Tx Total
-    90,   // U Payment Date
-    105,  // V Amount
-    100,  // W Sisa
+    90,   // U Dibayar Awal
+    90,   // V Payment Date
+    105,  // W Amount
+    100,  // X Sisa
+    24,   // Y (gap)
+    90,   // Z Price label
+    105,  // AA Price value
   ];
   widths.forEach((w, i) => {
     requests.push({
@@ -734,17 +942,17 @@ async function applyMonthFormatting(
     const { startRow, endRow } = paymentGroupRanges[gi];
     requests.push({
       repeatCell: {
-        range: { sheetId, startRowIndex: startRow, endRowIndex: endRow, startColumnIndex: 16, endColumnIndex: 23 },
+        range: { sheetId, startRowIndex: startRow, endRowIndex: endRow, startColumnIndex: 16, endColumnIndex: 24 },
         cell: { userEnteredFormat: { backgroundColor: gi % 2 === 0 ? COLORS.txBaseBg : COLORS.payGroupAltBg } },
         fields: "userEnteredFormat.backgroundColor",
       },
     });
   }
 
-  // Merge Order #, Tx Date, Member, Tx Total (cols Q–T = 16–19) within each multi-payment group
+  // Merge Order #, Tx Date, Member, Tx Total, Dibayar Awal (cols Q–U = 16–20) within each multi-payment group
   for (const { startRow, endRow } of paymentGroupRanges) {
     if (endRow - startRow <= 1) continue;
-    for (const colIdx of [16, 17, 18, 19]) {
+    for (const colIdx of [16, 17, 18, 19, 20]) {
       requests.push({
         mergeCells: {
           range: { sheetId, startRowIndex: startRow, endRowIndex: endRow, startColumnIndex: colIdx, endColumnIndex: colIdx + 1 },
@@ -780,11 +988,11 @@ async function applyMonthFormatting(
     });
   }
 
-  // Payment table Q–W (header row + all payment rows)
+  // Payment table Q–X (header row + all payment rows)
   if (paymentRowCount > 0) {
     requests.push({
       updateBorders: {
-        range: { sheetId, startRowIndex: 0, endRowIndex: paymentRowCount + 1, startColumnIndex: 16, endColumnIndex: 23 },
+        range: { sheetId, startRowIndex: 0, endRowIndex: paymentRowCount + 1, startColumnIndex: 16, endColumnIndex: 24 },
         top: borderLine, bottom: borderLine, left: borderLine, right: borderLine,
         innerHorizontal: borderLine, innerVertical: borderLine,
       },
@@ -864,12 +1072,20 @@ async function applyMembersFormatting(
 async function doSyncMonth(ctx: ActionCtx, yearMonth: string) {
   await ctx.runMutation(internal.sheetsSyncData.takeSnapshotIfMissing, {});
   const data = await ctx.runQuery(internal.sheetsSyncData.getMonthData, { yearMonth });
-  const { grid, stockHeaderRows, dateHeaderRows, txGroupRanges, totalRowIndices, stockRowCount, paymentRowCount, paymentGroupRanges, txRowMap, paymentMeta } = await buildMonthGrid(data);
   const tab = tabNameForMonth(yearMonth);
   const { sheets, sheetId } = getSheetsClient();
+  const previousCalendarDate = previousDate(`${yearMonth}-01`);
+  const previousSheetQuantities = await readStockAmountsFromSheet(sheets, sheetId, previousCalendarDate);
+  const previousSheetStock = previousSheetQuantities
+    ? { date: previousCalendarDate, quantitiesByLabel: previousSheetQuantities }
+    : null;
+  const { grid, stockHeaderRows, dateHeaderRows, txGroupRanges, totalRowIndices, stockRowCount, paymentRowCount, paymentGroupRanges, txRowMap, paymentMeta, priceHistoryHeaderRows, priceHistoryRowCount } = await buildMonthGrid({
+    ...data,
+    previousSheetStock,
+  });
   const { sheetId: tabSheetId, existingRuleCount } = await ensureTab(sheets, sheetId, tab);
   await writeTab(sheets, sheetId, tab, grid);
-  await applyMonthFormatting(sheets, sheetId, tabSheetId, grid.length, stockHeaderRows, dateHeaderRows, existingRuleCount, txGroupRanges, totalRowIndices, stockRowCount, paymentRowCount, paymentGroupRanges);
+  await applyMonthFormatting(sheets, sheetId, tabSheetId, grid.length, stockHeaderRows, dateHeaderRows, existingRuleCount, txGroupRanges, totalRowIndices, stockRowCount, paymentRowCount, paymentGroupRanges, priceHistoryHeaderRows, priceHistoryRowCount);
 
   // Inject HYPERLINK formulas into the payment Order # column (col Q)
   // Same-tab transactions use a direct row ref; cross-month ones use MATCH
@@ -882,14 +1098,15 @@ async function doSyncMonth(ctx: ActionCtx, yearMonth: string) {
       if (title && gid != null) tabGidMap.set(title, gid);
     }
     const formulas = paymentMeta.map(({ orderNum, txDate }) => {
-      const row = txRowMap.get(orderNum);
+      const row = txRowMap.get(`${txDate}::${orderNum}`);
       if (row != null) {
-        return [`=HYPERLINK("#gid=${tabSheetId}&range=A${row}",${orderNum})`];
+        return [`=HYPERLINK("#gid=${tabSheetId}&range=A${row + 1}",${orderNum})`];
       }
       const crossTabName = tabNameForMonth(txDate.slice(0, 7));
       const crossGid = tabGidMap.get(crossTabName);
       if (crossGid != null) {
-        return [`=HYPERLINK(CONCATENATE("#gid=",${crossGid},"&range=A",MATCH(${orderNum},'${crossTabName}'!A:A,0)),${orderNum})`];
+        const dateLabel = formatDateDMY(txDate);
+        return [`=HYPERLINK(CONCATENATE("#gid=",${crossGid},"&range=A",MATCH("${dateLabel}",'${crossTabName}'!A:A,0)+MATCH(${orderNum},INDIRECT("'${crossTabName}'!A"&MATCH("${dateLabel}",'${crossTabName}'!A:A,0)&":A"),0)-1),${orderNum})`];
       }
       return [orderNum];
     });

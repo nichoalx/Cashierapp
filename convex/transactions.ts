@@ -245,6 +245,20 @@ export const update = mutation({
     if (!userId) throw new Error("Unauthorized");
 
     for (const item of args.updatedItems) {
+      const old = await ctx.db.get(item.id);
+      if (old) {
+        const delta = item.quantity - old.quantity;
+        if (delta !== 0) {
+          const stockEntry = old.variantId
+            ? await ctx.db.query("stock").withIndex("by_variantId", q => q.eq("variantId", old.variantId!)).first()
+            : await ctx.db.query("stock").withIndex("by_productId", q => q.eq("productId", old.productId)).filter(q => q.eq(q.field("variantId"), undefined)).first();
+          if (stockEntry) {
+            await ctx.db.patch(stockEntry._id, {
+              quantity: Math.max(0, stockEntry.quantity - delta),
+            });
+          }
+        }
+      }
       await ctx.db.patch(item.id, {
         quantity: item.quantity,
         totalAmount: item.totalAmount,
@@ -252,6 +266,17 @@ export const update = mutation({
       });
     }
     for (const itemId of args.removedItemIds) {
+      const old = await ctx.db.get(itemId);
+      if (old) {
+        const stockEntry = old.variantId
+          ? await ctx.db.query("stock").withIndex("by_variantId", q => q.eq("variantId", old.variantId!)).first()
+          : await ctx.db.query("stock").withIndex("by_productId", q => q.eq("productId", old.productId)).filter(q => q.eq(q.field("variantId"), undefined)).first();
+        if (stockEntry) {
+          await ctx.db.patch(stockEntry._id, {
+            quantity: stockEntry.quantity + old.quantity,
+          });
+        }
+      }
       await ctx.db.delete(itemId);
     }
 
