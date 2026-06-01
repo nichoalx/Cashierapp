@@ -64,6 +64,10 @@ function fmtQty(q: number) {
   return q % 1 === 0 ? String(q) : q.toFixed(1);
 }
 
+function expandName(name: string): string {
+  return name.replace(/\bTempe\b/gi, 'Bibit Tempe').replace(/\bDages\b/gi, 'Bibit Dages');
+}
+
 function buildReceipt(tx: PrintTransaction): string {
   const ESC = "\x1b";
   const INIT     = `${ESC}\x40`;
@@ -80,7 +84,7 @@ function buildReceipt(tx: PrintTransaction): string {
   const subtotal = tx.items.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
 
   const itemLines = tx.items.flatMap(i => {
-    const name = `${i.productName}${i.variantValue ? ` ${i.variantValue}` : ""}`;
+    const name = `${expandName(i.productName)}${i.variantValue ? ` ${i.variantValue}` : ""}`;
     const qty  = `${fmtQty(i.quantity)}${i.unit} x ${rp(i.unitPrice)}`;
     const sub  = rp(i.quantity * i.unitPrice);
     return [`${name}\n`, `${padLine(qty, sub)}\n\n`];
@@ -113,6 +117,6 @@ function buildReceipt(tx: PrintTransaction): string {
     ...totalSection,
     tx.remarks ? `\n${tx.remarks}\n` : "",
     "\n",
-    CENTER, "Terima Kasih!\n\n",
+    CENTER, "Terima Kasih!\n\n\n",
   ].join("");
 }

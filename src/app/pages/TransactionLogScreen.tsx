@@ -550,7 +550,8 @@ function buildReceiptPreview(tx: Tx): string {
   ];
 
   for (const item of tx.items) {
-    const name = item.productName + (item.plasticSize ? ` ${item.plasticSize}` : '');
+    const rawName = item.productName.replace(/\bTempe\b/gi, 'Bibit Tempe').replace(/\bDages\b/gi, 'Bibit Dages');
+    const name = rawName + (item.plasticSize ? ` ${item.plasticSize}` : '');
     const qty  = `${fmtQty(item.quantity)}${item.unit} x ${rp(item.unitPrice)}`;
     lines.push(name, pad(qty, rp(item.total)), '');
   }
@@ -562,7 +563,7 @@ function buildReceiptPreview(tx: Tx): string {
   }
   lines.push(pad('TOTAL.', rp(tx.total)));
   if (tx.remarks) lines.push('', tx.remarks);
-  lines.push('', '', center('Terima Kasih!'), '', '');
+  lines.push('', center('Terima Kasih!'), '', '', '');
 
   return lines.join('\n');
 }
@@ -999,12 +1000,17 @@ export default function TransactionLogScreen() {
     const itemMap: Record<string, { qty: number; label: string; color: string; unit: string; isSoybean: boolean }> = {};
 
     for (const item of allItems) {
-      const key = item.plasticSize ? `plastic-${item.plasticSize}` : item.unit === 'kg' ? item.productShortName : item.productId;
+      const shortName = item.productShortName || '';
+      const key = item.plasticSize ? `plastic-${item.plasticSize}` : item.unit === 'kg' ? item.productName : item.productId;
       const label = item.unit === 'kg'
-        ? item.productShortName
+        ? (shortName.length > 1 ? shortName : item.productName)
         : item.plasticSize ? `Plastik ${item.plasticSize}` : item.productName;
       if (!itemMap[key])
         itemMap[key] = { qty: 0, label, color: item.color, unit: item.unit, isSoybean: item.unit === 'kg' };
+      else if (item.unit === 'kg' && shortName.length > 1) {
+        itemMap[key].label = shortName;
+        itemMap[key].color = item.color;
+      }
       itemMap[key].qty += item.quantity;
     }
 
