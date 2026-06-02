@@ -840,6 +840,10 @@ export default function TransactionLogScreen() {
   const [savedId, setSavedId]           = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<{ id: string; orderNumber: number } | null>(null);
   const [printingTx, setPrintingTx]       = useState<Tx | null>(null);
+  const [txSortOrder, setTxSortOrder] = useState<'newest' | 'oldest'>(() => {
+    const s = localStorage.getItem('txlog_sort_order');
+    return s === 'oldest' ? 'oldest' : 'newest';
+  });
   const deleteTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingDeleteRef = useRef<{ id: string; orderNumber: number } | null>(null);
 
@@ -1020,8 +1024,13 @@ export default function TransactionLogScreen() {
         return matchOrder || matchRemarks || matchMember || matchProduct;
       });
     }
+    list = [...list].sort((a, b) =>
+      txSortOrder === 'newest'
+        ? b.timestamp.getTime() - a.timestamp.getTime()
+        : a.timestamp.getTime() - b.timestamp.getTime()
+    );
     return list;
-  }, [transactions, activeFilters, searchQuery, pendingDelete]);
+  }, [transactions, activeFilters, searchQuery, pendingDelete, txSortOrder]);
 
   const summaryStats = useMemo(() => {
     const allItems = transactions.flatMap(t => t.items);
@@ -1763,6 +1772,26 @@ export default function TransactionLogScreen() {
             })}
           </div>
         )}
+      </div>
+
+      {/* Count + sort */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+        <span style={{ fontSize: '12px', color: '#4a4e69' }}>{filteredTxs.length} transaksi</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <button
+            onClick={() => { setTxSortOrder('newest'); localStorage.setItem('txlog_sort_order', 'newest'); }}
+            style={{ fontSize: '11px', fontWeight: txSortOrder === 'newest' ? 700 : 400, color: txSortOrder === 'newest' ? '#4a4e69' : '#c0c4d0', background: 'none', border: 'none', cursor: 'pointer', padding: '10px 8px', lineHeight: 1, transition: 'color 0.15s' }}
+          >
+            Terbaru
+          </button>
+          <span style={{ fontSize: '11px', color: '#c0c4d0', userSelect: 'none' }}>·</span>
+          <button
+            onClick={() => { setTxSortOrder('oldest'); localStorage.setItem('txlog_sort_order', 'oldest'); }}
+            style={{ fontSize: '11px', fontWeight: txSortOrder === 'oldest' ? 700 : 400, color: txSortOrder === 'oldest' ? '#4a4e69' : '#c0c4d0', background: 'none', border: 'none', cursor: 'pointer', padding: '10px 8px', lineHeight: 1, transition: 'color 0.15s' }}
+          >
+            Terlama
+          </button>
+        </div>
       </div>
 
       {/* Soft-delete undo toast */}

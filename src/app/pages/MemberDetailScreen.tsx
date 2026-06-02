@@ -102,6 +102,7 @@ export default function MemberDetailScreen() {
   const [histSearch, setHistSearch] = useState('');
   const [histSort, setHistSort] = useState<'newest' | 'oldest' | 'amount'>('newest');
   const [hutangOnly, setHutangOnly] = useState(false);
+  const [photoExpanded, setPhotoExpanded] = useState(false);
 
   const rawOrders = data?.orders ?? [];
 
@@ -167,12 +168,33 @@ export default function MemberDetailScreen() {
         </div>
       </div>
 
+      {/* Photo lightbox */}
+      {photoExpanded && member.profileImageUrl && (
+        <div
+          onClick={() => setPhotoExpanded(false)}
+          style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, animation: 'photo-bg-in 180ms ease both' }}
+        >
+          <img
+            src={member.profileImageUrl}
+            alt={member.name}
+            style={{ maxWidth: '100%', maxHeight: '100%', borderRadius: 20, objectFit: 'contain', boxShadow: '0 24px 72px rgba(0,0,0,0.5)', animation: 'photo-img-in 220ms cubic-bezier(0.34,1.56,0.64,1) both' }}
+          />
+        </div>
+      )}
+      <style>{`
+        @keyframes photo-bg-in  { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes photo-img-in { from { opacity: 0; transform: scale(0.82); } to { opacity: 1; transform: scale(1); } }
+      `}</style>
+
       {/* Scrollable content */}
-      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', overscrollBehavior: 'contain', padding: '0 var(--app-page-gutter) var(--app-content-bottom)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', overscrollBehavior: 'contain', padding: '6px var(--app-page-gutter) var(--app-content-bottom)', display: 'flex', flexDirection: 'column', gap: 12 }}>
 
         {/* Member card */}
         <div style={{ background: '#eef0f5', boxShadow: SHD_RAISED, borderRadius: 14, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 14 }}>
-          <div style={{ width: 52, height: 52, borderRadius: '14px', flexShrink: 0, background: `${color}1e`, boxShadow: '3px 3px 7px #c8cad1, -3px -3px 7px #ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+          <div
+            onClick={() => { if (member.profileImageUrl) setPhotoExpanded(true); }}
+            style={{ width: 52, height: 52, borderRadius: '14px', flexShrink: 0, background: `${color}1e`, boxShadow: '3px 3px 7px #c8cad1, -3px -3px 7px #ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', cursor: member.profileImageUrl ? 'zoom-in' : 'default' }}
+          >
             {member.profileImageUrl
               ? <img src={member.profileImageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               : <span style={{ fontSize: '16px', fontWeight: 800, color, lineHeight: 1 }}>{initials(member.name)}</span>
