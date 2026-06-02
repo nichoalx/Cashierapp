@@ -29,7 +29,8 @@ export const create = mutation({
       .query("transactions")
       .withIndex("by_date", q => q.eq("date", date))
       .collect();
-    const orderNumber = todayTxs.length + 1;
+    const maxOrderNum = todayTxs.reduce((max, tx) => Math.max(max, tx.orderNumber), 0);
+    const orderNumber = maxOrderNum + 1;
 
     const subtotal = args.items.reduce((s, i) => s + i.totalAmount, 0);
     const discount = Math.max(0, Math.min(args.discount ?? 0, subtotal));
@@ -223,6 +224,40 @@ export const getDetail = query({
       items,
       payments,
     };
+  },
+});
+
+export const fixDuplicateOrderNumbers = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Unauthorized");
+
+    const allTxs = await ctx.db.query("transactions").collect();
+
+    const byDate = new Map<string, typeof allTxs>();
+    for (const tx of allTxs) {
+      let group = byDate.get(tx.date);
+      if (!group) { group = []; byDate.set(tx.date, group); }
+      group.push(tx);
+    }
+
+    const fixed: Array<{ date: string; oldNum: number; newNum: number }> = [];
+
+    for (const [date, txs] of byDate) {
+      // Sort strictly by timestamp — this is the intended chronological order
+      txs.sort((a, b) => a.timestamp - b.timestamp);
+
+      for (let i = 0; i < txs.length; i++) {
+        const expected = i + 1;
+        if (txs[i].orderNumber !== expected) {
+          fixed.push({ date, oldNum: txs[i].orderNumber, newNum: expected });
+          await ctx.db.patch(txs[i]._id, { orderNumber: expected });
+        }
+      }
+    }
+
+    return { fixed, count: fixed.length };
   },
 });
 

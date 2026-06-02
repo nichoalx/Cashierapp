@@ -30,20 +30,17 @@ function previousDate(date: string) {
 // Lives outside `sheetsSync.ts` because that file uses the Node.js runtime,
 // which only permits action definitions — queries/mutations must be in V8-runtime files.
 
-/** Refresh the stock snapshot for today (always overwrites so the sheet stays current). */
+/** Create today's stock snapshot only if one doesn't already exist. Manual fixes are preserved. */
 export const takeSnapshotIfMissing = internalMutation({
   args: {},
   handler: async (ctx) => {
     const date = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Jakarta" });
 
-    // Always delete and re-insert today's snapshot so the sheet reflects the latest stock
     const existing = await ctx.db
       .query("stockSnapshots")
       .withIndex("by_date", q => q.eq("date", date))
       .collect();
-    for (const s of existing) {
-      await ctx.db.delete(s._id);
-    }
+    if (existing.length > 0) return { created: false, date };
 
     const stockRows = await ctx.db.query("stock").collect();
     const now = Date.now();
@@ -183,11 +180,20 @@ export const getMonthData = internalQuery({
       paymentBalanceMap.set(p._id, Math.max(0, Math.round(txData.totalAmount - txData.amountPaid - newRunning)));
     }
 
+    // Month-end snapshot for carry-forward balance — only payments up to end of displayed month
+    const monthEndDate = `${monthPrefix}-31`;
+    const monthEndRunning = new Map<string, number>();
+    for (const p of sortedAllPayments) {
+      if (p.date > monthEndDate) continue;
+      monthEndRunning.set(p.transactionId, (monthEndRunning.get(p.transactionId) ?? 0) + p.amount);
+    }
+
     // Current month payment events
     const currentMonthPaymentDetails = await Promise.all(currentMonthPayments.map(async (p) => {
       const tx = await ctx.db.get(p.transactionId);
       const member = tx?.memberId ? await ctx.db.get(tx.memberId) : null;
       return {
+        transactionId: p.transactionId,
         orderNumber: tx?.orderNumber ?? 0,
         txDate: tx?.date ?? "",
         memberName: member?.name ?? "",
@@ -196,6 +202,7 @@ export const getMonthData = internalQuery({
         paymentDate: p.date,
         amount: p.amount,
         balance: paymentBalanceMap.get(p._id) ?? 0,
+        isOpeningBalance: false,
       };
     }));
 
@@ -203,14 +210,16 @@ export const getMonthData = internalQuery({
     const txIdsWithCurrentMonthPayment = new Set(currentMonthPayments.map(p => p.transactionId.toString()));
     const carryForwardDetails: typeof currentMonthPaymentDetails = [];
     for (const tx of allTxs) {
+      if (tx.date > monthEndDate) continue;
       if (txIdsWithCurrentMonthPayment.has(tx._id)) continue;
       const initialPaid = tx.amountPaid ?? tx.totalAmount;
       if (initialPaid >= tx.totalAmount) continue;
-      const totalExtraPayments = runningByPaymentTx.get(tx._id) ?? 0;
+      const totalExtraPayments = monthEndRunning.get(tx._id) ?? 0;
       const remaining = Math.max(0, Math.round(tx.totalAmount - initialPaid - totalExtraPayments));
       if (remaining <= 0) continue;
       const member = tx.memberId ? await ctx.db.get(tx.memberId) : null;
       carryForwardDetails.push({
+        transactionId: tx._id,
         orderNumber: tx.orderNumber,
         txDate: tx.date,
         memberName: member?.name ?? "",
@@ -219,14 +228,70 @@ export const getMonthData = internalQuery({
         paymentDate: "",
         amount: 0,
         balance: remaining,
+        isOpeningBalance: false,
       });
     }
 
-    const paymentDetails = [...currentMonthPaymentDetails, ...carryForwardDetails];
-    paymentDetails.sort((a, b) => {
+    const baseDetails = [...currentMonthPaymentDetails, ...carryForwardDetails];
+    baseDetails.sort((a, b) => {
       const d = a.txDate.localeCompare(b.txDate);
       return d !== 0 ? d : a.orderNumber - b.orderNumber;
     });
+
+    // Opening balance ("Saldo Awal"): for credits that originated in an earlier month
+    // and received a payment THIS month, show the balance carried into this month so the
+    // tab reconciles on its own. Computed identically to the global balance math above,
+    // so it equals the prior month's closing Sisa.
+    const monthStartDate = `${monthPrefix}-01`;
+    const MONTH_LABELS = [
+      "January", "February", "March", "April", "May", "June",
+      "July", "August", "September", "October", "November", "December",
+    ];
+    const pm = Number(monthPrefix.split("-")[1]);
+    const prevMonthLabel = MONTH_LABELS[(pm - 2 + 12) % 12]; // month before the one being synced
+    const openingLabel = `Sisa dari ${prevMonthLabel}`;
+    const paidBeforeMonth = new Map<string, number>();
+    for (const p of sortedAllPayments) {
+      if (p.date < monthStartDate) {
+        paidBeforeMonth.set(p.transactionId, (paidBeforeMonth.get(p.transactionId) ?? 0) + p.amount);
+      }
+    }
+    const openingByGroupKey = new Map<string, (typeof baseDetails)[number]>();
+    for (const d of currentMonthPaymentDetails) {
+      if (!d.txDate || d.txDate >= monthStartDate) continue; // originated this month — no carry-in
+      const key = `${d.orderNumber}::${d.txDate}::${d.memberName}`;
+      if (openingByGroupKey.has(key)) continue;
+      const txData = paymentTxCache.get(d.transactionId);
+      if (!txData) continue;
+      const paidBefore = paidBeforeMonth.get(d.transactionId) ?? 0;
+      const opening = Math.max(0, Math.round(txData.totalAmount - txData.amountPaid - paidBefore));
+      if (opening <= 0) continue;
+      openingByGroupKey.set(key, {
+        transactionId: d.transactionId,
+        orderNumber: d.orderNumber,
+        txDate: d.txDate,
+        memberName: d.memberName,
+        txTotal: d.txTotal,
+        amountPaid: d.amountPaid,
+        paymentDate: openingLabel,
+        amount: 0,
+        balance: opening,
+        isOpeningBalance: true,
+      });
+    }
+
+    // Weave each opening row in front of its order's first payment row
+    const paymentDetails: typeof baseDetails = [];
+    const emittedOpening = new Set<string>();
+    for (const row of baseDetails) {
+      const key = `${row.orderNumber}::${row.txDate}::${row.memberName}`;
+      if (!emittedOpening.has(key)) {
+        const opening = openingByGroupKey.get(key);
+        if (opening) paymentDetails.push(opening);
+        emittedOpening.add(key);
+      }
+      paymentDetails.push(row);
+    }
 
     const allPriceHistory = await ctx.db
       .query("priceHistory")
@@ -238,6 +303,62 @@ export const getMonthData = internalQuery({
       .map(pi => ({ productId: pi.productId, label: pi.label }));
 
     return { txDetails, snapshots, prevMonthSnapshots, productInfo, paymentDetails, priceHistory: allPriceHistory, currentPrices: allCurrentPrices, priceProducts };
+  },
+});
+
+/**
+ * Surgically set a single snapshot's quantity by date + product label.
+ * Collapses any duplicate snapshot rows for that (date, product, variant) into one,
+ * so the value can't be shadowed by a stale newer duplicate in latestSnapshotsByKey.
+ */
+export const setSnapshotQuantity = mutation({
+  args: {
+    date: v.string(),                    // "YYYY-MM-DD"
+    productName: v.string(),             // e.g. "SBS"
+    variantValue: v.optional(v.string()),// e.g. "12x14" (omit for non-variant products)
+    quantity: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Unauthorized");
+
+    const product = await ctx.db
+      .query("products")
+      .withIndex("by_name", q => q.eq("name", args.productName))
+      .first();
+    if (!product) throw new Error(`No product named "${args.productName}"`);
+
+    let variantId: Id<"productVariants"> | undefined;
+    if (args.variantValue !== undefined) {
+      const variants = await ctx.db
+        .query("productVariants")
+        .withIndex("by_productId", q => q.eq("productId", product._id))
+        .collect();
+      const variant = variants.find(v => v.variantValue === args.variantValue);
+      if (!variant) throw new Error(`No variant "${args.variantValue}" for ${args.productName}`);
+      variantId = variant._id;
+    }
+
+    const matching = (await ctx.db
+      .query("stockSnapshots")
+      .withIndex("by_productId_date", q => q.eq("productId", product._id).eq("date", args.date))
+      .collect())
+      .filter(s => (s.variantId ?? undefined) === variantId);
+
+    const now = Date.now();
+    if (matching.length === 0) {
+      await ctx.db.insert("stockSnapshots", {
+        date: args.date, productId: product._id, variantId, quantity: args.quantity, timestamp: now,
+      });
+      return { action: "inserted", date: args.date, label: args.productName, quantity: args.quantity };
+    }
+
+    // Keep the newest record, set its value, delete the rest so no stale duplicate shadows it
+    matching.sort((a, b) => (b._creationTime) - (a._creationTime));
+    const [keep, ...extras] = matching;
+    await ctx.db.patch(keep._id, { quantity: args.quantity, timestamp: now });
+    for (const e of extras) await ctx.db.delete(e._id);
+    return { action: "updated", date: args.date, label: args.productName, quantity: args.quantity, removedDuplicates: extras.length };
   },
 });
 

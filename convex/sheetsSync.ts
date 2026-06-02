@@ -273,12 +273,12 @@ async function buildMonthGrid(args: {
   snapshots: Array<{ date: string; productId: Id<"products">; variantId?: Id<"productVariants">; quantity: number }>;
   prevMonthSnapshots: Array<{ date: string; productId: Id<"products">; variantId?: Id<"productVariants">; quantity: number }>;
   productInfo: Array<{ productId: Id<"products">; variantId?: Id<"productVariants">; label: string; unit: string }>;
-  paymentDetails: Array<{ orderNumber: number; txDate: string; memberName: string; txTotal: number; amountPaid: number; paymentDate: string; amount: number; balance: number }>;
+  paymentDetails: Array<{ orderNumber: number; txDate: string; memberName: string; txTotal: number; amountPaid: number; paymentDate: string; amount: number; balance: number; isOpeningBalance?: boolean }>;
   priceHistory: Array<{ productId: Id<"products">; variantId?: Id<"productVariants">; oldPrice: number; newPrice: number; changedAt: number }>;
   currentPrices: Array<{ productId: Id<"products">; variantId?: Id<"productVariants">; price: number }>;
   priceProducts: Array<{ productId: Id<"products">; label: string }>;
   previousSheetStock?: { date: string; quantitiesByLabel: Map<string, number> } | null;
-}): Promise<{ grid: (string | number)[][]; stockHeaderRows: number[]; dateHeaderRows: number[]; txGroupRanges: Array<{ startRow: number; endRow: number; isCredit: boolean }>; totalRowIndices: number[]; stockRowCount: number; paymentRowCount: number; paymentGroupRanges: Array<{ startRow: number; endRow: number }>; txRowMap: Map<string, number>; paymentMeta: Array<{ orderNum: number; txDate: string }>; priceHistoryHeaderRows: number[]; priceHistoryRowCount: number }> {
+}): Promise<{ grid: (string | number)[][]; stockHeaderRows: number[]; dateHeaderRows: number[]; txGroupRanges: Array<{ startRow: number; endRow: number; isCredit: boolean }>; totalRowIndices: number[]; stockRowCount: number; paymentRowCount: number; paymentGroupRanges: Array<{ startRow: number; endRow: number }>; openingRowIndices: number[]; txRowMap: Map<string, number>; paymentMeta: Array<{ orderNum: number; txDate: string }>; priceHistoryHeaderRows: number[]; priceHistoryRowCount: number }> {
   const txHeader: string[] = [
     "Order", "Time", "Product", "Qty", "Unit",
     "Unit Price", "Item Total", "Discount", "Tx Total", "Member", "Remarks",
@@ -383,17 +383,23 @@ async function buildMonthGrid(args: {
     const d = a.txDate.localeCompare(b.txDate);
     return d !== 0 ? d : a.orderNumber - b.orderNumber;
   });
+  // For opening-balance rows, paymentDate holds the label ("Sisa dari May") and Amount stays blank.
   const paymentColumn: (string | number)[][] = sortedPayments.map(p => [
-    p.orderNumber, p.txDate, p.memberName, Math.round(p.txTotal), Math.round(p.amountPaid), p.paymentDate, Math.round(p.amount), Math.round(p.balance),
+    p.orderNumber, p.txDate, p.memberName, Math.round(p.txTotal), Math.round(p.amountPaid),
+    p.paymentDate, p.isOpeningBalance ? "" : Math.round(p.amount), Math.round(p.balance),
   ]);
+  const openingRowIndices: number[] = [];
+  sortedPayments.forEach((p, i) => { if (p.isOpeningBalance) openingRowIndices.push(i + 1); });
   const paymentGroupRanges: Array<{ startRow: number; endRow: number }> = [];
   const paymentMeta: Array<{ orderNum: number; txDate: string }> = [];
   {
     let pi = 0;
     while (pi < sortedPayments.length) {
       const orderNum = sortedPayments[pi].orderNumber;
+      const groupTxDate = sortedPayments[pi].txDate;
+      const groupMember = sortedPayments[pi].memberName;
       const groupStart = pi;
-      while (pi < sortedPayments.length && sortedPayments[pi].orderNumber === orderNum) pi++;
+      while (pi < sortedPayments.length && sortedPayments[pi].orderNumber === orderNum && sortedPayments[pi].txDate === groupTxDate && sortedPayments[pi].memberName === groupMember) pi++;
       paymentGroupRanges.push({ startRow: groupStart + 1, endRow: pi + 1 });
     }
     for (const p of sortedPayments) {
@@ -469,7 +475,7 @@ async function buildMonthGrid(args: {
   }
 
   const dateHeaderRows = dateHeaderTxIndices.map(i => i + 1); // +1 for the column header row
-  return { grid, stockHeaderRows, dateHeaderRows, txGroupRanges, totalRowIndices, stockRowCount: stockColumn.length, paymentRowCount: sortedPayments.length, paymentGroupRanges, txRowMap, paymentMeta, priceHistoryHeaderRows, priceHistoryRowCount: priceHistoryColumn.length };
+  return { grid, stockHeaderRows, dateHeaderRows, txGroupRanges, totalRowIndices, stockRowCount: stockColumn.length, paymentRowCount: sortedPayments.length, paymentGroupRanges, openingRowIndices, txRowMap, paymentMeta, priceHistoryHeaderRows, priceHistoryRowCount: priceHistoryColumn.length };
 }
 
 // ─── Formatting ──────────────────────────────────────────────────────────────
@@ -496,6 +502,8 @@ const COLORS = {
   paymentHeaderFg:  rgb(221, 236, 248),  // #ddecf8 - cool light text
   creditAmber:      rgb(212, 160, 23),   // #d4a017 - amber text for kredit/hutang Tx Total
   payGroupAltBg:    rgb(240, 247, 255),  // #f0f7ff - subtle blue for alternating payment groups
+  openingBg:        rgb(237, 239, 245),  // #edeff5 - faint grey band for carried-in balance rows
+  openingFg:        rgb(110, 118, 140),  // #6e768c - muted grey text, reads as context not a payment
 };
 
 type SheetsRequest = Record<string, unknown>;
@@ -513,6 +521,7 @@ async function applyMonthFormatting(
   stockRowCount: number,
   paymentRowCount: number,
   paymentGroupRanges: Array<{ startRow: number; endRow: number }>,
+  openingRowIndices: number[],
   priceHistoryHeaderRows: number[],
   priceHistoryRowCount: number,
 ): Promise<void> {
@@ -1071,6 +1080,24 @@ async function applyMonthFormatting(
     }
   }
 
+  // Opening-balance ("Sisa dari …") rows — style the non-merged cells (Payment Date, Amount, Sisa = cols 21–23)
+  // as muted italic context so they read as carried-in notes, not payment events. The merged metadata
+  // cols (16–20) keep their group shading. Sisa text colour is still set by the conditional rule below.
+  for (const rowIdx of openingRowIndices) {
+    requests.push({
+      repeatCell: {
+        range: { sheetId, startRowIndex: rowIdx, endRowIndex: rowIdx + 1, startColumnIndex: 21, endColumnIndex: 24 },
+        cell: {
+          userEnteredFormat: {
+            backgroundColor: COLORS.openingBg,
+            textFormat: { foregroundColor: COLORS.openingFg, italic: true },
+          },
+        },
+        fields: "userEnteredFormat(backgroundColor,textFormat)",
+      },
+    });
+  }
+
   // Borders — transaction table stops before the total row (footer); stock table covers its data exactly
   const borderEnd = totalRowIndices.length > 0
     ? totalRowIndices[totalRowIndices.length - 1]
@@ -1179,7 +1206,6 @@ async function applyMembersFormatting(
 // ─── Workers (reusable across public actions) ────────────────────────────────
 
 async function doSyncMonth(ctx: ActionCtx, yearMonth: string) {
-  await ctx.runMutation(internal.sheetsSyncData.takeSnapshotIfMissing, {});
   const data = await ctx.runQuery(internal.sheetsSyncData.getMonthData, { yearMonth });
   const tab = tabNameForMonth(yearMonth);
   const { sheets, sheetId } = getSheetsClient();
@@ -1188,14 +1214,14 @@ async function doSyncMonth(ctx: ActionCtx, yearMonth: string) {
   const previousSheetStock = previousSheetQuantities
     ? { date: previousCalendarDate, quantitiesByLabel: previousSheetQuantities }
     : null;
-  const { grid, stockHeaderRows, dateHeaderRows, txGroupRanges, totalRowIndices, stockRowCount, paymentRowCount, paymentGroupRanges, txRowMap, paymentMeta, priceHistoryHeaderRows, priceHistoryRowCount } = await buildMonthGrid({
+  const { grid, stockHeaderRows, dateHeaderRows, txGroupRanges, totalRowIndices, stockRowCount, paymentRowCount, paymentGroupRanges, openingRowIndices, txRowMap, paymentMeta, priceHistoryHeaderRows, priceHistoryRowCount } = await buildMonthGrid({
     ...data,
     previousSheetStock,
   });
   const { sheetId: tabSheetId, existingRuleCount } = await ensureTab(sheets, sheetId, tab);
   await ensureGridSize(sheets, sheetId, tabSheetId, grid.length, grid[0]?.length ?? 0);
   await writeTab(sheets, sheetId, tab, grid, tabSheetId);
-  await applyMonthFormatting(sheets, sheetId, tabSheetId, grid.length, stockHeaderRows, dateHeaderRows, existingRuleCount, txGroupRanges, totalRowIndices, stockRowCount, paymentRowCount, paymentGroupRanges, priceHistoryHeaderRows, priceHistoryRowCount);
+  await applyMonthFormatting(sheets, sheetId, tabSheetId, grid.length, stockHeaderRows, dateHeaderRows, existingRuleCount, txGroupRanges, totalRowIndices, stockRowCount, paymentRowCount, paymentGroupRanges, openingRowIndices, priceHistoryHeaderRows, priceHistoryRowCount);
 
   // Inject HYPERLINK formulas into the payment Order # column (col Q)
   // Same-tab transactions use a direct row ref; cross-month ones use MATCH

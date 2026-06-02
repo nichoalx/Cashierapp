@@ -1,3 +1,4 @@
+
 import { createBrowserRouter, Outlet, Navigate, useLocation } from 'react-router';
 import { AnimatePresence, motion, MotionConfig } from 'motion/react';
 import { BottomNav } from './components/BottomNav';
