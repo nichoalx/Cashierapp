@@ -101,11 +101,13 @@ export default function MemberDetailScreen() {
   // Hooks must be before any early returns
   const [histSearch, setHistSearch] = useState('');
   const [histSort, setHistSort] = useState<'newest' | 'oldest' | 'amount'>('newest');
+  const [hutangOnly, setHutangOnly] = useState(false);
 
   const rawOrders = data?.orders ?? [];
 
   const sortedOrders = useMemo(() => {
     let result = [...rawOrders];
+    if (hutangOnly) result = result.filter(o => o.balance > 0);
     if (histSearch.trim()) {
       const q = histSearch.toLowerCase();
       result = result.filter(o =>
@@ -197,7 +199,17 @@ export default function MemberDetailScreen() {
         <div>
           {/* Section label + sort controls */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-            <div style={{ fontSize: '9px', color: '#9a9db5', letterSpacing: '0.08em', fontWeight: 600 }}>RIWAYAT PESANAN</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+              <div style={{ fontSize: '9px', color: '#9a9db5', letterSpacing: '0.08em', fontWeight: 600 }}>RIWAYAT PESANAN</div>
+              {orders.some(o => o.balance > 0) && (
+                <button
+                  onClick={() => setHutangOnly(d => !d)}
+                  style={{ fontSize: '10px', fontWeight: 700, color: hutangOnly ? '#d4a017' : '#c0c4d0', background: hutangOnly ? '#d4a01715' : 'transparent', border: `1px solid ${hutangOnly ? '#d4a01745' : 'transparent'}`, borderRadius: 20, padding: '2px 9px', cursor: 'pointer', transition: 'color 0.15s, background 0.15s, border-color 0.15s', fontFamily: 'inherit' }}
+                >
+                  Hutang{hutangOnly ? ' ×' : ''}
+                </button>
+              )}
+            </div>
             {orders.length > 0 && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 {(['newest', 'oldest', 'amount'] as const).map((s, i) => (
