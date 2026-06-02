@@ -13,6 +13,46 @@ import type { Id } from "./_generated/dataModel";
 
 // ─── Sheet writer plumbing ───────────────────────────────────────────────────
 
+// Pull the full detail out of a googleapis GaxiosError. The bare `.message`
+// ("Internal error encountered.") hides the HTTP code/status and any descriptive
+// reason Google returned, so we surface those for diagnosis.
+function describeGoogleError(e: unknown): string {
+  const err = e as {
+    message?: string;
+    code?: string | number;
+    response?: { status?: number; data?: { error?: { code?: number; status?: string; message?: string; details?: unknown } } };
+    errors?: unknown;
+  };
+  const g = err?.response?.data?.error;
+  const parts: string[] = [];
+  if (err?.response?.status) parts.push(`http=${err.response.status}`);
+  if (g?.code) parts.push(`code=${g.code}`);
+  if (g?.status) parts.push(`status=${g.status}`);
+  if (g?.message) parts.push(`message="${g.message}"`);
+  else if (err?.message) parts.push(`message="${err.message}"`);
+  if (g?.details) parts.push(`details=${JSON.stringify(g.details)}`);
+  else if (err?.errors) parts.push(`errors=${JSON.stringify(err.errors)}`);
+  return parts.length ? parts.join(" ") : String(e);
+}
+
+async function withRetry<T>(fn: () => Promise<T>, label = "sheets", maxAttempts = 4): Promise<T> {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (e) {
+      const detail = describeGoogleError(e);
+      const status = (e as { response?: { status?: number } })?.response?.status;
+      const retryable = status === 429 || status === 500 || status === 503
+        || detail.includes("Internal error") || detail.includes("Rate Limit") || detail.includes("UNAVAILABLE");
+      if (!retryable || attempt === maxAttempts - 1) {
+        throw new Error(`[${label}] Google Sheets API failed after ${attempt + 1} attempt(s): ${detail}`);
+      }
+      await new Promise(r => setTimeout(r, 800 * 2 ** attempt));
+    }
+  }
+  throw new Error("unreachable");
+}
+
 const MONTH_LABELS = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
@@ -78,10 +118,46 @@ async function ensureTab(
     spreadsheetId,
     requestBody: { requests: [{ addSheet: { properties: { title } } }] },
   });
+  const props = res.data.replies![0].addSheet!.properties!;
   return {
-    sheetId: res.data.replies![0].addSheet!.properties!.sheetId!,
+    sheetId: props.sheetId!,
     existingRuleCount: 0,
   };
+}
+
+// `values.update` does not grow the grid, so writing past a tab's current
+// row/column bounds fails with a bare 500 INTERNAL. Expand the tab first when
+// the grid we're about to write is larger than the tab's current dimensions.
+// Reads ground-truth dimensions itself rather than trusting a passed-in value.
+async function ensureGridSize(
+  sheets: ReturnType<typeof google.sheets>,
+  spreadsheetId: string,
+  sheetId: number,
+  neededRows: number,
+  neededCols: number,
+): Promise<void> {
+  const meta = await sheets.spreadsheets.get({
+    spreadsheetId,
+    fields: "sheets(properties(sheetId,gridProperties(rowCount,columnCount)))",
+  });
+  const props = meta.data.sheets?.find(s => s.properties?.sheetId === sheetId)?.properties?.gridProperties;
+  const curRows = props?.rowCount ?? 0;
+  const curCols = props?.columnCount ?? 0;
+  if (curRows >= neededRows && curCols >= neededCols) return;
+  const targetRows = Math.max(curRows, neededRows + 200);
+  const targetCols = Math.max(curCols, neededCols + 3);
+  console.log(`[ensureGridSize] sheet ${sheetId}: expanding ${curRows}r×${curCols}c → ${targetRows}r×${targetCols}c (need ${neededRows}r×${neededCols}c)`);
+  await withRetry(() => sheets.spreadsheets.batchUpdate({
+    spreadsheetId,
+    requestBody: {
+      requests: [{
+        updateSheetProperties: {
+          properties: { sheetId, gridProperties: { rowCount: targetRows, columnCount: targetCols } },
+          fields: "gridProperties.rowCount,gridProperties.columnCount",
+        },
+      }],
+    },
+  }), `resize sheet ${sheetId} → ${targetCols}c`);
 }
 
 async function writeTab(
@@ -89,19 +165,52 @@ async function writeTab(
   spreadsheetId: string,
   title: string,
   values: (string | number)[][],
+  tabSheetId: number,
   valueInputOption: "RAW" | "USER_ENTERED" = "RAW",
 ): Promise<void> {
-  await sheets.spreadsheets.values.clear({
+  await withRetry(() => sheets.spreadsheets.values.clear({
     spreadsheetId,
     range: `'${title}'`,
-  });
+  }), `clear ${title}`);
   if (values.length === 0) return;
-  await sheets.spreadsheets.values.update({
+
+  // `values.clear` removes values but NOT merges. applyMonthFormatting (which runs
+  // AFTER this) merges date-header / multi-row cells; those merges persist into the
+  // next sync, and once the layout/data shifts a stale merge can land across a row
+  // we then try to write — which Google rejects with a bare 500 INTERNAL. Unmerge
+  // the whole tab before writing values; formatting re-applies its merges after.
+  await withRetry(() => sheets.spreadsheets.batchUpdate({
+    spreadsheetId,
+    requestBody: { requests: [{ unmergeCells: { range: { sheetId: tabSheetId } } }] },
+  }), `unmerge ${title}`);
+
+  // Coerce every cell to a clean primitive Google will accept (defensive against a
+  // NaN/Infinity/null cell, lone surrogate, control char, or over-long string).
+  const safe = values.map(row => row.map(cell => {
+    if (typeof cell === "number") return Number.isFinite(cell) ? cell : "";
+    if (typeof cell === "string") return sanitizeCellString(cell);
+    return cell == null ? "" : sanitizeCellString(String(cell));
+  }));
+
+  await withRetry(() => sheets.spreadsheets.values.update({
     spreadsheetId,
     range: `'${title}'!A1`,
     valueInputOption,
-    requestBody: { values },
-  });
+    requestBody: { values: safe },
+  }), `update ${title} (${safe.length}r×${safe[0]?.length ?? 0}c)`);
+}
+
+// Strip the things Google's Sheets API can choke on in a RAW string cell:
+// lone surrogates → replacement char, C0/C1 control chars (keep tab/newline/CR),
+// and cap length well under the 50k-char per-cell limit.
+function sanitizeCellString(s: string): string {
+  let out = s
+    .replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/g, "�")
+    .replace(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, "�")
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "");
+  if (out.length > 40000) out = out.slice(0, 40000);
+  return out;
 }
 
 async function readStockAmountsFromSheet(
@@ -1084,7 +1193,8 @@ async function doSyncMonth(ctx: ActionCtx, yearMonth: string) {
     previousSheetStock,
   });
   const { sheetId: tabSheetId, existingRuleCount } = await ensureTab(sheets, sheetId, tab);
-  await writeTab(sheets, sheetId, tab, grid);
+  await ensureGridSize(sheets, sheetId, tabSheetId, grid.length, grid[0]?.length ?? 0);
+  await writeTab(sheets, sheetId, tab, grid, tabSheetId);
   await applyMonthFormatting(sheets, sheetId, tabSheetId, grid.length, stockHeaderRows, dateHeaderRows, existingRuleCount, txGroupRanges, totalRowIndices, stockRowCount, paymentRowCount, paymentGroupRanges, priceHistoryHeaderRows, priceHistoryRowCount);
 
   // Inject HYPERLINK formulas into the payment Order # column (col Q)
@@ -1129,7 +1239,7 @@ async function doSyncMembers(ctx: ActionCtx) {
   ];
   const { sheets, sheetId } = getSheetsClient();
   const { sheetId: tabSheetId } = await ensureTab(sheets, sheetId, "Members");
-  await writeTab(sheets, sheetId, "Members", grid);
+  await writeTab(sheets, sheetId, "Members", grid, tabSheetId);
   await applyMembersFormatting(sheets, sheetId, tabSheetId);
   return { rows: grid.length };
 }

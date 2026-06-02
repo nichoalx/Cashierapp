@@ -125,7 +125,7 @@ export default function MemberDetailScreen() {
     else if (histSort === 'oldest') result.sort((a, b) => a.timestamp - b.timestamp);
     else result.sort((a, b) => b.total - a.total);
     return result;
-  }, [rawOrders, histSearch, histSort]);
+  }, [rawOrders, histSearch, histSort, hutangOnly]);
 
   const groupedOrders = useMemo((): Array<[string, typeof sortedOrders]> | null => {
     if (histSort === 'amount') return null;
