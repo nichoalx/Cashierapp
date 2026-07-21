@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import { X, MessageSquare, User, Check, RotateCcw } from 'lucide-react';
+import { X, MessageSquare, User, Check, RotateCcw, AlertTriangle } from 'lucide-react';
 import { tap, softTap, confirmTap } from '../../utils/haptics';
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '../../../convex/_generated/api';
@@ -16,6 +16,11 @@ type Step =
   | { type: 'quantity'; productId: string; variantId?: string; productName: string; productShortName: string; unit: string; unitPrice: number; color: string; plasticSize?: string; isSoybean?: boolean; isEceran?: boolean };
 
 function genId() { return Math.random().toString(36).slice(2, 10); }
+
+// Insufficient-stock warning entry
+type Shortage = { name: string; have: number; need: number; unit: string };
+const fmtQty = (n: number) =>
+  n % 1 === 0 ? n.toLocaleString('id-ID') : n.toLocaleString('id-ID', { maximumFractionDigits: 1 });
 
 const PLASTIC_COLOR = '#38b2ac';
 
@@ -96,7 +101,18 @@ export default function HomeScreen() {
 
   const rawProducts = useQuery(api.products.listWithPrices);
   const rawMembers  = useQuery(api.members.list);
+  const rawStock    = useQuery(api.stock.list);
   const createTx    = useMutation(api.transactions.create);
+
+  // Live stock keyed by product/variant — used to gate transactions before commit
+  const stockByKey = useMemo(() => {
+    const m = new Map<string, { quantity: number; name: string; unit: string }>();
+    (rawStock ?? []).forEach(s => {
+      const key = s.variantId ? `v:${s.variantId}` : `p:${s.productId}`;
+      m.set(key, { quantity: s.quantity, name: s.productShortName, unit: s.unit });
+    });
+    return m;
+  }, [rawStock]);
 
   const soybeanProducts = useMemo(() =>
     (rawProducts ?? []).filter(p => p.unit === 'kg' && p.name !== 'E').map(p => ({
@@ -140,12 +156,36 @@ export default function HomeScreen() {
   const [discountMode, setDiscountMode] = useState(false);
   const [discountInput, setDiscountInput] = useState('0');
   const [debtMode, setDebtMode] = useState(false);
+  const [stockError, setStockError] = useState<Shortage[] | null>(null);
   const compact = useCompact();
 
   // Auto-clear kredit when member is deselected
   useEffect(() => {
     if (!selectedMember) setDebtMode(false);
   }, [selectedMember]);
+
+  // Any change to the cart clears a stale insufficient-stock warning
+  useEffect(() => { setStockError(null); }, [items]);
+
+  // Compare aggregated cart quantities against live stock; returns any shortfalls.
+  const computeShortages = useCallback((cartItems: TransactionItem[]): Shortage[] => {
+    const requested = new Map<string, { qty: number; plasticSize?: string }>();
+    for (const it of cartItems) {
+      const key = it.variantId ? `v:${it.variantId}` : `p:${it.productId}`;
+      const prev = requested.get(key);
+      if (prev) prev.qty += it.quantity;
+      else requested.set(key, { qty: it.quantity, plasticSize: it.plasticSize });
+    }
+    const short: Shortage[] = [];
+    for (const [key, r] of requested) {
+      const st = stockByKey.get(key);
+      if (!st) continue; // untracked product — mirror the server, don't gate
+      if (r.qty > st.quantity + 1e-9) {
+        short.push({ name: st.name + (r.plasticSize ? ` ${r.plasticSize}` : ''), have: st.quantity, need: r.qty, unit: st.unit });
+      }
+    }
+    return short;
+  }, [stockByKey]);
 
   // Payment confirmation phase (after Selesai, before commit)
   type PayStash = { items: TransactionItem[]; remarks: string; memberId?: string; memberName?: string; discount: number };
@@ -256,6 +296,16 @@ export default function HomeScreen() {
 
   const handleComplete = useCallback(() => {
     if (items.length === 0) return;
+
+    // Stock safety gate — block the transaction if any product is short.
+    // Cart is left intact so the operator can add stock or adjust quantities.
+    const shortages = computeShortages(items);
+    if (shortages.length > 0) {
+      tap();
+      setStockError(shortages);
+      return;
+    }
+
     const discountAmount = parseFloat(discountInput) || 0;
     const stash: PayStash = {
       items: [...items], remarks: remarks.trim(),
@@ -291,7 +341,7 @@ export default function HomeScreen() {
         undoTimerRef.current = null;
       }, 3000);
     }
-  }, [items, remarks, selectedMember, discountInput, debtMode, commitStash]);
+  }, [items, remarks, selectedMember, discountInput, debtMode, commitStash, computeShortages]);
 
   // Confirm kredit payment (optionally with a partial cash amount)
   const handlePayConfirm = useCallback(() => {
@@ -435,6 +485,35 @@ export default function HomeScreen() {
               </div>
             )}
           </div>
+
+          {/* Insufficient-stock warning — blocks completion until resolved */}
+          {stockError && payPhase === 'idle' && (
+            <div
+              role="alert"
+              style={{
+                flexShrink: 0, marginBottom: 6,
+                background: '#eef0f5',
+                boxShadow: 'inset 2px 2px 6px #d9b8bf, inset -2px -2px 6px #ffffff',
+                borderRadius: 12, padding: '9px 11px',
+                display: 'flex', gap: 8, alignItems: 'flex-start',
+                animation: 'flash-in 200ms cubic-bezier(0.16, 1, 0.3, 1) both',
+              }}
+            >
+              <AlertTriangle size={15} color="#d4183d" strokeWidth={2.5} style={{ flexShrink: 0, marginTop: 1 }} />
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontSize: '11px', fontWeight: 700, color: '#d4183d', marginBottom: 3 }}>
+                  Stok tidak cukup — tambah stok dulu
+                </div>
+                <div style={{ fontSize: '10px', color: '#8a6a70', lineHeight: 1.45 }}>
+                  {stockError.map(s => (
+                    <div key={s.name}>
+                      <span style={{ fontWeight: 600, color: '#6a4e53' }}>{s.name}</span>: sisa {fmtQty(s.have)}, butuh {fmtQty(s.need)} {s.unit}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Scrollable items area */}
           <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' }}>

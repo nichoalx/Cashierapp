@@ -1,6 +1,7 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import { getAuthUserId } from "@convex-dev/auth/server";
+import { Id } from "./_generated/dataModel";
 
 export const create = mutation({
   args: {
@@ -21,6 +22,37 @@ export const create = mutation({
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (!userId) throw new Error("Unauthorized");
+
+    // ── Stock gate ───────────────────────────────────────────────────────────
+    // Reject the whole transaction (before any writes) if it would push any
+    // product/variant below zero. Aggregate requested quantity per target first,
+    // since the same product/variant can appear across multiple cart items
+    // (e.g. a normal line + an eceran line both draw from the same stock).
+    const requestedByKey = new Map<
+      string,
+      { productId: Id<"products">; variantId?: Id<"productVariants">; qty: number }
+    >();
+    for (const item of args.items) {
+      const key = item.variantId ? `v:${item.variantId}` : `p:${item.productId}`;
+      const prev = requestedByKey.get(key);
+      if (prev) prev.qty += item.quantity;
+      else requestedByKey.set(key, { productId: item.productId, variantId: item.variantId, qty: item.quantity });
+    }
+    const shortages: string[] = [];
+    for (const req of requestedByKey.values()) {
+      const stockEntry = req.variantId
+        ? await ctx.db.query("stock").withIndex("by_variantId", q => q.eq("variantId", req.variantId!)).first()
+        : await ctx.db.query("stock").withIndex("by_productId", q => q.eq("productId", req.productId)).filter(q => q.eq(q.field("variantId"), undefined)).first();
+      // Untracked products (no stock row) are not gated — there is nothing to deplete.
+      if (stockEntry && req.qty > stockEntry.quantity) {
+        const product = await ctx.db.get(req.productId);
+        const variant = req.variantId ? await ctx.db.get(req.variantId) : null;
+        shortages.push(variant ? `${product?.name ?? "?"} ${variant.variantValue}` : (product?.name ?? "?"));
+      }
+    }
+    if (shortages.length > 0) {
+      throw new Error(`Stok tidak cukup: ${shortages.join(", ")}. Tambah stok dulu.`);
+    }
 
     const now = Date.now();
     const date = new Date(now).toISOString().slice(0, 10);
