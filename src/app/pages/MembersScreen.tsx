@@ -493,7 +493,12 @@ export default function MembersScreen() {
   });
   const [editingMember, setEditingMember] = useState<Member | null>(null);
   const [actionsOpen, setActionsOpen] = useState<Id<'members'> | null>(null);
-  const [debtOnly, setDebtOnly] = useState(false);
+  // Defaults on: the members staff look up are almost always the ones who owe.
+  // Persisted like sortOrder, so turning it off sticks.
+  const [debtOnly, setDebtOnly] = useState(() => {
+    const saved = localStorage.getItem('members_debt_only');
+    return saved === null ? true : saved === '1';
+  });
 
   const phoneInputRef = useRef<HTMLInputElement>(null);
   const deleteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -840,7 +845,7 @@ export default function MembersScreen() {
               : `${effectiveTotal} anggota`}
           </span>
           <button
-            onClick={() => setDebtOnly(d => !d)}
+            onClick={() => setDebtOnly(d => { localStorage.setItem('members_debt_only', d ? '0' : '1'); return !d; })}
             style={{ fontSize: '10px', fontWeight: 700, color: debtOnly ? '#d4a017' : '#c0c4d0', background: debtOnly ? '#d4a01715' : 'transparent', border: `1px solid ${debtOnly ? '#d4a01745' : 'transparent'}`, borderRadius: 20, padding: '2px 9px', cursor: 'pointer', transition: 'color 0.15s, background 0.15s, border-color 0.15s', fontFamily: 'inherit' }}
           >
             Hutang{debtOnly ? ' ×' : ''}

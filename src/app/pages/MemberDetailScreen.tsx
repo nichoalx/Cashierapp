@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { useQuery } from 'convex/react';
 import { api } from '../../../convex/_generated/api';
@@ -93,10 +93,17 @@ function MemberDetailSkeleton({ onBack }: { onBack: () => void }) {
 export default function MemberDetailScreen() {
   const { memberId } = useParams<{ memberId: string }>();
   const navigate = useNavigate();
+  // Order history loads one page at a time — the full history was reading every
+  // transaction, item and payment for the member on each open.
+  const HISTORY_PAGE = 20;
+  const [historyLimit, setHistoryLimit] = useState(HISTORY_PAGE);
   const data = useQuery(
     api.members.getWithHistory,
-    memberId ? { memberId: memberId as Id<'members'> } : 'skip',
+    memberId ? { memberId: memberId as Id<'members'>, limit: historyLimit } : 'skip',
   );
+
+  // Reset paging when navigating between members
+  useEffect(() => { setHistoryLimit(HISTORY_PAGE); }, [memberId]);
 
   // Hooks must be before any early returns
   const [histSearch, setHistSearch] = useState('');
@@ -148,7 +155,8 @@ export default function MemberDetailScreen() {
     );
   }
 
-  const { member, orders, totalOutstanding } = data;
+  const { member, orders, totalOutstanding, totalOrderCount } = data;
+  const remainingOrders = Math.max(0, totalOrderCount - orders.length);
   const color = member.color ?? getAvatarColor(member._id);
 
   return (
@@ -223,7 +231,12 @@ export default function MemberDetailScreen() {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
               <div style={{ fontSize: '9px', color: '#9a9db5', letterSpacing: '0.08em', fontWeight: 600 }}>RIWAYAT PESANAN</div>
-              {orders.some(o => o.balance > 0) && (
+              {data.hasMore && (
+                <span style={{ fontSize: '9px', color: '#c0c4d0', fontWeight: 500 }}>
+                  {orders.length} dari {totalOrderCount}
+                </span>
+              )}
+              {totalOutstanding > 0 && (
                 <button
                   onClick={() => setHutangOnly(d => !d)}
                   style={{ fontSize: '10px', fontWeight: 700, color: hutangOnly ? '#d4a017' : '#c0c4d0', background: hutangOnly ? '#d4a01715' : 'transparent', border: `1px solid ${hutangOnly ? '#d4a01745' : 'transparent'}`, borderRadius: 20, padding: '2px 9px', cursor: 'pointer', transition: 'color 0.15s, background 0.15s, border-color 0.15s', fontFamily: 'inherit' }}
@@ -280,6 +293,21 @@ export default function MemberDetailScreen() {
           ) : sortedOrders.length === 0 ? (
             <div style={{ background: '#eef0f5', boxShadow: SHD_RAISED, borderRadius: 14, padding: '20px 16px', textAlign: 'center' }}>
               <span style={{ fontSize: '12px', color: '#c0c4d0' }}>Tidak ditemukan</span>
+              {/* Search/filter only sees loaded orders — say so instead of
+                  implying the order doesn't exist. */}
+              {data.hasMore && (
+                <>
+                  <div style={{ fontSize: '11px', color: '#9a9db5', marginTop: 6, lineHeight: 1.45 }}>
+                    Baru {orders.length} dari {totalOrderCount} pesanan yang dimuat.
+                  </div>
+                  <button
+                    onClick={() => setHistoryLimit(l => l + HISTORY_PAGE)}
+                    style={{ marginTop: 10, background: 'none', border: 'none', cursor: 'pointer', color: '#4a90d9', fontSize: '12px', fontWeight: 600, fontFamily: 'inherit' }}
+                  >
+                    Muat {remainingOrders} pesanan lainnya
+                  </button>
+                </>
+              )}
             </div>
           ) : groupedOrders !== null ? (
             /* Date-grouped view (newest / oldest sort) */
@@ -384,6 +412,15 @@ export default function MemberDetailScreen() {
                 </div>
               ))}
             </div>
+          )}
+
+          {data.hasMore && (
+            <button
+              onClick={() => setHistoryLimit(l => l + HISTORY_PAGE)}
+              style={{ marginTop: 8, width: '100%', background: '#eef0f5', boxShadow: SHD_RAISED, borderRadius: 14, padding: '11px 14px', border: 'none', fontSize: '12px', fontWeight: 600, color: '#4a4e69', cursor: 'pointer', fontFamily: 'inherit' }}
+            >
+              Muat lagi{remainingOrders > 0 ? ` (${remainingOrders} lainnya)` : ''}
+            </button>
           )}
         </div>
 

@@ -2,6 +2,7 @@ import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { Id } from "./_generated/dataModel";
+import { recomputeMemberStats } from "./memberStats";
 
 export const create = mutation({
   args: {
@@ -114,6 +115,8 @@ export const create = mutation({
         });
       }
     }
+
+    await recomputeMemberStats(ctx, args.memberId);
 
     return txId;
   },
@@ -357,12 +360,20 @@ export const update = mutation({
     const requestedDiscount = args.discount ?? existing?.discount ?? 0;
     const discount = Math.max(0, Math.min(requestedDiscount, subtotal));
 
+    const previousMemberId = existing?.memberId;
+
     await ctx.db.patch(args.txId, {
       totalAmount: subtotal - discount,
       discount: discount > 0 ? discount : undefined,
       remarks: args.remarks,
       memberId: args.memberId,
     });
+
+    // The member may have been reassigned — refresh both sides.
+    await recomputeMemberStats(ctx, args.memberId);
+    if (previousMemberId && previousMemberId !== args.memberId) {
+      await recomputeMemberStats(ctx, previousMemberId);
+    }
   },
 });
 
@@ -371,6 +382,8 @@ export const remove = mutation({
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (!userId) throw new Error("Unauthorized");
+
+    const removedMemberId = (await ctx.db.get(args.txId))?.memberId;
 
     const items = await ctx.db
       .query("transactionItems")
@@ -400,5 +413,7 @@ export const remove = mutation({
     }
 
     await ctx.db.delete(args.txId);
+
+    await recomputeMemberStats(ctx, removedMemberId);
   },
 });

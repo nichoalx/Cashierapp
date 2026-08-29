@@ -8,6 +8,7 @@ import { useAppStore, formatRupiah, TransactionItem } from '../store';
 import { useCompact } from '../hooks/useCompact';
 import { Numpad } from '../components/Numpad';
 import { MemberPickerModal } from '../components/MemberPickerModal';
+import { computeShortages as computeShortagesPure, type Shortage } from '../../utils/stockGate';
 
 type Step =
   | { type: 'idle' }
@@ -17,8 +18,6 @@ type Step =
 
 function genId() { return Math.random().toString(36).slice(2, 10); }
 
-// Insufficient-stock warning entry
-type Shortage = { name: string; have: number; need: number; unit: string };
 const fmtQty = (n: number) =>
   n % 1 === 0 ? n.toLocaleString('id-ID') : n.toLocaleString('id-ID', { maximumFractionDigits: 1 });
 
@@ -100,7 +99,7 @@ export default function HomeScreen() {
   } = useAppStore();
 
   const rawProducts = useQuery(api.products.listWithPrices);
-  const rawMembers  = useQuery(api.members.list);
+  const rawMembers  = useQuery(api.members.listBasic);
   const rawStock    = useQuery(api.stock.list);
   const createTx    = useMutation(api.transactions.create);
 
@@ -168,24 +167,10 @@ export default function HomeScreen() {
   useEffect(() => { setStockError(null); }, [items]);
 
   // Compare aggregated cart quantities against live stock; returns any shortfalls.
-  const computeShortages = useCallback((cartItems: TransactionItem[]): Shortage[] => {
-    const requested = new Map<string, { qty: number; plasticSize?: string }>();
-    for (const it of cartItems) {
-      const key = it.variantId ? `v:${it.variantId}` : `p:${it.productId}`;
-      const prev = requested.get(key);
-      if (prev) prev.qty += it.quantity;
-      else requested.set(key, { qty: it.quantity, plasticSize: it.plasticSize });
-    }
-    const short: Shortage[] = [];
-    for (const [key, r] of requested) {
-      const st = stockByKey.get(key);
-      if (!st) continue; // untracked product — mirror the server, don't gate
-      if (r.qty > st.quantity + 1e-9) {
-        short.push({ name: st.name + (r.plasticSize ? ` ${r.plasticSize}` : ''), have: st.quantity, need: r.qty, unit: st.unit });
-      }
-    }
-    return short;
-  }, [stockByKey]);
+  const computeShortages = useCallback(
+    (cartItems: TransactionItem[]): Shortage[] => computeShortagesPure(cartItems, stockByKey),
+    [stockByKey],
+  );
 
   // Payment confirmation phase (after Selesai, before commit)
   type PayStash = { items: TransactionItem[]; remarks: string; memberId?: string; memberName?: string; discount: number };

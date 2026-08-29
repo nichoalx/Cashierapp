@@ -848,7 +848,7 @@ export default function TransactionLogScreen() {
   const pendingDeleteRef = useRef<{ id: string; orderNumber: number } | null>(null);
 
   // ── Convex hooks ──────────────────────────────────────────────────────────
-  const rawMembers = useQuery(api.members.list);
+  const rawMembers = useQuery(api.members.listBasic);
   const rawTxs     = useQuery(api.transactions.listByDate, { date: toDateStr(selectedDate) });
   const rawStock   = useQuery(api.stock.list);
   const updateTx   = useMutation(api.transactions.update);

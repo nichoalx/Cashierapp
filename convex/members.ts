@@ -8,41 +8,51 @@ export const list = query({
     const userId = await getAuthUserId(ctx);
     if (!userId) return null;
 
+    // Flat read: one document per member, no fan-out. outstanding/visitCount/
+    // lastVisitDate are denormalized onto the member by recomputeMemberStats().
+    // ctx.storage.getUrl is not a database read, so it costs nothing here.
     const members = await ctx.db.query("members").collect();
 
-    // Attach outstanding balance to each member for the list view
-    const withBalances = await Promise.all(members.map(async (m) => {
-      const txs = await ctx.db
-        .query("transactions")
-        .withIndex("by_memberId", q => q.eq("memberId", m._id))
-        .collect();
-
-      let outstanding = 0;
-      for (const tx of txs) {
-        const initialPaid = tx.amountPaid ?? tx.totalAmount;
-        const pyRows = await ctx.db
-          .query("payments")
-          .withIndex("by_transactionId", q => q.eq("transactionId", tx._id))
-          .collect();
-        const recorded = pyRows.reduce((s, p) => s + p.amount, 0);
-        outstanding += Math.max(0, tx.totalAmount - initialPaid - recorded);
-      }
-
+    return await Promise.all(members.map(async (m) => {
       const profileImageUrl = m.profileImageId
         ? await ctx.storage.getUrl(m.profileImageId)
         : null;
-      const lastVisitDate = txs.length > 0
-        ? txs.reduce((a, b) => a.timestamp > b.timestamp ? a : b).date
-        : undefined;
-      return { ...m, outstanding, visitCount: txs.length, lastVisitDate, profileImageUrl: profileImageUrl ?? undefined };
+      return {
+        ...m,
+        outstanding: m.outstanding ?? 0,
+        visitCount: m.visitCount ?? 0,
+        lastVisitDate: m.lastVisitDate,
+        profileImageUrl: profileImageUrl ?? undefined,
+      };
     }));
-
-    return withBalances;
   },
 });
 
+/**
+ * Identity-only member list for screens that just need to pick a member
+ * (HomeScreen cart, TransactionLogScreen filter). Skips balances and profile
+ * image URLs entirely.
+ */
+export const listBasic = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return null;
+
+    const members = await ctx.db.query("members").collect();
+    return members.map(m => ({
+      _id: m._id,
+      _creationTime: m._creationTime,
+      name: m.name,
+      phone: m.phone,
+    }));
+  },
+});
+
+const DEFAULT_HISTORY_LIMIT = 20;
+
 export const getWithHistory = query({
-  args: { memberId: v.id("members") },
+  args: { memberId: v.id("members"), limit: v.optional(v.number()) },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (!userId) return null;
@@ -50,14 +60,22 @@ export const getWithHistory = query({
     const member = await ctx.db.get(args.memberId);
     if (!member) return null;
 
-    const txs = await ctx.db
+    // Read one page of orders, newest first, instead of the member's entire
+    // history. Take limit+1 to detect whether a "Muat lagi" page exists without
+    // a second query.
+    const limit = args.limit ?? DEFAULT_HISTORY_LIMIT;
+    const page = await ctx.db
       .query("transactions")
       .withIndex("by_memberId", q => q.eq("memberId", args.memberId))
-      .collect();
+      .order("desc")
+      .take(limit + 1);
+
+    const hasMore = page.length > limit;
+    const txs = hasMore ? page.slice(0, limit) : page;
 
     txs.sort((a, b) => b.timestamp - a.timestamp);
 
-    let totalOutstanding = 0;
+    let windowOutstanding = 0;
     const orders = await Promise.all(txs.map(async (tx) => {
       const pyRows = await ctx.db
         .query("payments")
@@ -66,7 +84,7 @@ export const getWithHistory = query({
       const recorded = pyRows.reduce((s, p) => s + p.amount, 0);
       const initialPaid = tx.amountPaid ?? tx.totalAmount;
       const balance = Math.max(0, tx.totalAmount - initialPaid - recorded);
-      totalOutstanding += balance;
+      windowOutstanding += balance;
 
       const rawItems = await ctx.db
         .query("transactionItems")
@@ -103,7 +121,12 @@ export const getWithHistory = query({
     return {
       member: { ...member, profileImageUrl: profileImageUrl ?? undefined },
       orders,
-      totalOutstanding,
+      // Debt across ALL history, not just the loaded page — read from the
+      // denormalized field. Falls back to the loaded window only for rows not
+      // yet touched by the backfill.
+      totalOutstanding: member.outstanding ?? windowOutstanding,
+      totalOrderCount: member.visitCount ?? txs.length,
+      hasMore,
     };
   },
 });

@@ -54,6 +54,13 @@ export default defineSchema({
     phone: v.optional(v.string()),
     color: v.optional(v.string()),
     profileImageId: v.optional(v.id("_storage")),
+    // Denormalized stats. Recomputed by recomputeMemberStats() on every write
+    // that can change them (transaction create/update/remove, payment record).
+    // Optional because rows created before the backfill won't have them —
+    // readers fall back to 0 / undefined.
+    outstanding: v.optional(v.number()),    // Sum of unpaid balance across all transactions
+    visitCount: v.optional(v.number()),     // Number of transactions
+    lastVisitDate: v.optional(v.string()),  // "YYYY-MM-DD" of most recent transaction
   }).index("by_name", ["name"]),
 
   // ─── Transactions ─────────────────────────────────────────────────────────────
