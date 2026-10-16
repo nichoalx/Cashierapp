@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { tap } from '../../utils/haptics';
+import { notifyError } from '../../utils/notifyError';
 import { useParams, useNavigate } from 'react-router';
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '../../../convex/_generated/api';
@@ -11,7 +12,8 @@ const SHD_RAISED = '4px 4px 9px #c8cad1, -4px -4px 9px #ffffff';
 const SHD_RECESSED = 'inset 3px 3px 7px #c8cad1, inset -3px -3px 7px #ffffff';
 const SHD_ACTION = '4px 4px 10px rgba(0,0,0,0.16), -3px -3px 8px rgba(255,255,255,0.5)';
 
-function today() { return new Date().toISOString().slice(0, 10); }
+// The shop's calendar day — a UTC date would still read yesterday before 07:00 WIB.
+function today() { return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' }); }
 
 type PaymentEntry = { id: Id<'payments'>; date: string; amount: number };
 
@@ -328,7 +330,8 @@ export default function OrderDetailScreen() {
   const isFullyPaid = detail.balance <= 0;
 
   const handleSavePayment = (amount: number, date: string) => {
-    recordPayment({ transactionId: detail.id, date, amount }).catch(console.error);
+    recordPayment({ transactionId: detail.id, date, amount })
+      .catch(e => notifyError('Pembayaran gagal disimpan', e));
   };
 
   return (
@@ -381,7 +384,10 @@ export default function OrderDetailScreen() {
           // This payment is already deducted from the balance, so add it back
           // to get the true ceiling for the edited amount.
           remaining={detail.balance + editingPayment.amount}
-          onSave={(amount, date) => { void updatePayment({ paymentId: editingPayment.id, amount, date }); }}
+          onSave={(amount, date) => {
+            updatePayment({ paymentId: editingPayment.id, amount, date })
+              .catch(e => notifyError('Perubahan pembayaran gagal disimpan', e));
+          }}
           onClose={() => setEditingPayment(null)}
         />
       )}
@@ -392,7 +398,8 @@ export default function OrderDetailScreen() {
           onClose={() => setConfirmPayment(null)}
           onConfirm={() => {
             tap();
-            void removePayment({ paymentId: confirmPayment.id });
+            removePayment({ paymentId: confirmPayment.id })
+              .catch(e => notifyError('Pembayaran gagal dihapus', e));
             setConfirmPayment(null);
           }}
         />

@@ -1,8 +1,19 @@
-import { query, mutation } from "./_generated/server";
+import { query, mutation, MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { getAuthUserId } from "@convex-dev/auth/server";
-import { Id } from "./_generated/dataModel";
-import { recomputeMemberStats } from "./memberStats";
+import { Doc, Id } from "./_generated/dataModel";
+import { adjustMemberStats, unpaidBalance } from "./memberStats";
+
+/** The stock row a product/variant draws from, or null when it isn't stock-tracked. */
+function findStockEntry(
+  ctx: MutationCtx,
+  productId: Id<"products">,
+  variantId: Id<"productVariants"> | undefined,
+) {
+  return variantId
+    ? ctx.db.query("stock").withIndex("by_variantId", q => q.eq("variantId", variantId)).first()
+    : ctx.db.query("stock").withIndex("by_productId", q => q.eq("productId", productId)).filter(q => q.eq(q.field("variantId"), undefined)).first();
+}
 
 export const create = mutation({
   args: {
@@ -56,7 +67,9 @@ export const create = mutation({
     }
 
     const now = Date.now();
-    const date = new Date(now).toISOString().slice(0, 10);
+    // The shop's calendar day (Asia/Jakarta), matching the stock snapshots. A UTC
+    // date would roll over at 07:00 WIB and file early sales under yesterday.
+    const date = new Date(now).toLocaleDateString("en-CA", { timeZone: "Asia/Jakarta" });
 
     const todayTxs = await ctx.db
       .query("transactions")
@@ -116,7 +129,8 @@ export const create = mutation({
       }
     }
 
-    await recomputeMemberStats(ctx, args.memberId);
+    const tx = (await ctx.db.get(txId))!;
+    await adjustMemberStats(ctx, args.memberId, { outstanding: unpaidBalance(tx, []), visits: 1 });
 
     return txId;
   },
@@ -210,7 +224,7 @@ export const getDetail = query({
       const variant = item.variantId ? await ctx.db.get(item.variantId) : null;
       const priceRow = item.variantId
         ? await ctx.db.query("prices").withIndex("by_variantId", q => q.eq("variantId", item.variantId)).first()
-        : await ctx.db.query("prices").withIndex("by_productId", q => q.eq("productId", item.productId)).first();
+        : await ctx.db.query("prices").withIndex("by_productId", q => q.eq("productId", item.productId)).filter(q => q.eq(q.field("variantId"), undefined)).first();
       return {
         id: item._id,
         productName: variant
@@ -262,40 +276,6 @@ export const getDetail = query({
   },
 });
 
-export const fixDuplicateOrderNumbers = mutation({
-  args: {},
-  handler: async (ctx) => {
-    const userId = await getAuthUserId(ctx);
-    if (!userId) throw new Error("Unauthorized");
-
-    const allTxs = await ctx.db.query("transactions").collect();
-
-    const byDate = new Map<string, typeof allTxs>();
-    for (const tx of allTxs) {
-      let group = byDate.get(tx.date);
-      if (!group) { group = []; byDate.set(tx.date, group); }
-      group.push(tx);
-    }
-
-    const fixed: Array<{ date: string; oldNum: number; newNum: number }> = [];
-
-    for (const [date, txs] of byDate) {
-      // Sort strictly by timestamp — this is the intended chronological order
-      txs.sort((a, b) => a.timestamp - b.timestamp);
-
-      for (let i = 0; i < txs.length; i++) {
-        const expected = i + 1;
-        if (txs[i].orderNumber !== expected) {
-          fixed.push({ date, oldNum: txs[i].orderNumber, newNum: expected });
-          await ctx.db.patch(txs[i]._id, { orderNumber: expected });
-        }
-      }
-    }
-
-    return { fixed, count: fixed.length };
-  },
-});
-
 export const update = mutation({
   args: {
     txId: v.id("transactions"),
@@ -314,21 +294,61 @@ export const update = mutation({
     const userId = await getAuthUserId(ctx);
     if (!userId) throw new Error("Unauthorized");
 
+    // ── Net stock change per product/variant ────────────────────────────────
+    // Every edited line gives its old quantity back to the stock it drew from
+    // and takes its new quantity from the stock it now draws from — so a plastic
+    // size change (5×8 → 10×12) moves stock between sizes. Removed lines give
+    // their quantity back. Netting per target first lets the gate and the
+    // writes see the whole edit at once.
+    const netByKey = new Map<
+      string,
+      { productId: Id<"products">; variantId?: Id<"productVariants">; qty: number }
+    >();
+    const addNet = (productId: Id<"products">, variantId: Id<"productVariants"> | undefined, qty: number) => {
+      const key = variantId ? `v:${variantId}` : `p:${productId}`;
+      const prev = netByKey.get(key);
+      if (prev) prev.qty += qty;
+      else netByKey.set(key, { productId, variantId, qty });
+    };
     for (const item of args.updatedItems) {
       const old = await ctx.db.get(item.id);
-      if (old) {
-        const delta = item.quantity - old.quantity;
-        if (delta !== 0) {
-          const stockEntry = old.variantId
-            ? await ctx.db.query("stock").withIndex("by_variantId", q => q.eq("variantId", old.variantId!)).first()
-            : await ctx.db.query("stock").withIndex("by_productId", q => q.eq("productId", old.productId)).filter(q => q.eq(q.field("variantId"), undefined)).first();
-          if (stockEntry) {
-            await ctx.db.patch(stockEntry._id, {
-              quantity: Math.max(0, stockEntry.quantity - delta),
-            });
-          }
-        }
+      if (!old) continue;
+      addNet(old.productId, old.variantId, -old.quantity);
+      addNet(old.productId, item.variantId ?? old.variantId, item.quantity);
+    }
+    for (const itemId of args.removedItemIds) {
+      const old = await ctx.db.get(itemId);
+      if (old) addNet(old.productId, old.variantId, -old.quantity);
+    }
+
+    // ── Stock gate ───────────────────────────────────────────────────────────
+    // Same rule as create: reject the edit before any writes if it would draw
+    // more than is in stock. Untracked products (no stock row) are not gated.
+    const stockByKey = new Map<string, Doc<"stock">>();
+    const shortages: string[] = [];
+    for (const [key, net] of netByKey) {
+      if (net.qty === 0) continue;
+      const stockEntry = await findStockEntry(ctx, net.productId, net.variantId);
+      if (!stockEntry) continue;
+      stockByKey.set(key, stockEntry);
+      if (net.qty > stockEntry.quantity) {
+        const product = await ctx.db.get(net.productId);
+        const variant = net.variantId ? await ctx.db.get(net.variantId) : null;
+        shortages.push(variant ? `${product?.name ?? "?"} ${variant.variantValue}` : (product?.name ?? "?"));
       }
+    }
+    if (shortages.length > 0) {
+      throw new Error(`Stok tidak cukup: ${shortages.join(", ")}. Tambah stok dulu.`);
+    }
+
+    for (const [key, net] of netByKey) {
+      const stockEntry = stockByKey.get(key);
+      if (stockEntry) {
+        await ctx.db.patch(stockEntry._id, { quantity: stockEntry.quantity - net.qty });
+      }
+    }
+
+    for (const item of args.updatedItems) {
       await ctx.db.patch(item.id, {
         quantity: item.quantity,
         totalAmount: item.totalAmount,
@@ -336,17 +356,6 @@ export const update = mutation({
       });
     }
     for (const itemId of args.removedItemIds) {
-      const old = await ctx.db.get(itemId);
-      if (old) {
-        const stockEntry = old.variantId
-          ? await ctx.db.query("stock").withIndex("by_variantId", q => q.eq("variantId", old.variantId!)).first()
-          : await ctx.db.query("stock").withIndex("by_productId", q => q.eq("productId", old.productId)).filter(q => q.eq(q.field("variantId"), undefined)).first();
-        if (stockEntry) {
-          await ctx.db.patch(stockEntry._id, {
-            quantity: stockEntry.quantity + old.quantity,
-          });
-        }
-      }
       await ctx.db.delete(itemId);
     }
 
@@ -361,6 +370,11 @@ export const update = mutation({
     const discount = Math.max(0, Math.min(requestedDiscount, subtotal));
 
     const previousMemberId = existing?.memberId;
+    const payments = await ctx.db
+      .query("payments")
+      .withIndex("by_transactionId", q => q.eq("transactionId", args.txId))
+      .collect();
+    const oldBalance = existing ? unpaidBalance(existing, payments) : 0;
 
     await ctx.db.patch(args.txId, {
       totalAmount: subtotal - discount,
@@ -369,10 +383,13 @@ export const update = mutation({
       memberId: args.memberId,
     });
 
-    // The member may have been reassigned — refresh both sides.
-    await recomputeMemberStats(ctx, args.memberId);
-    if (previousMemberId && previousMemberId !== args.memberId) {
-      await recomputeMemberStats(ctx, previousMemberId);
+    const newBalance = unpaidBalance((await ctx.db.get(args.txId))!, payments);
+    if (previousMemberId === args.memberId) {
+      await adjustMemberStats(ctx, args.memberId, { outstanding: newBalance - oldBalance, visits: 0 });
+    } else {
+      // Reassigned — move the order and its balance from one member to the other.
+      await adjustMemberStats(ctx, previousMemberId, { outstanding: -oldBalance, visits: -1 });
+      await adjustMemberStats(ctx, args.memberId, { outstanding: newBalance, visits: 1 });
     }
   },
 });
@@ -383,7 +400,7 @@ export const remove = mutation({
     const userId = await getAuthUserId(ctx);
     if (!userId) throw new Error("Unauthorized");
 
-    const removedMemberId = (await ctx.db.get(args.txId))?.memberId;
+    const tx = await ctx.db.get(args.txId);
 
     const items = await ctx.db
       .query("transactionItems")
@@ -412,8 +429,20 @@ export const remove = mutation({
       await ctx.db.delete(item._id);
     }
 
+    // Payments belong to the transaction — delete them with it so they don't
+    // linger as orphans (they'd show up in the Sheets payment table as order #0).
+    const payments = await ctx.db
+      .query("payments")
+      .withIndex("by_transactionId", q => q.eq("transactionId", args.txId))
+      .collect();
+    for (const p of payments) {
+      await ctx.db.delete(p._id);
+    }
+
     await ctx.db.delete(args.txId);
 
-    await recomputeMemberStats(ctx, removedMemberId);
+    if (tx) {
+      await adjustMemberStats(ctx, tx.memberId, { outstanding: -unpaidBalance(tx, payments), visits: -1 });
+    }
   },
 });

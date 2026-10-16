@@ -9,6 +9,7 @@ import { useCompact } from '../hooks/useCompact';
 import { Numpad } from '../components/Numpad';
 import { MemberPickerModal } from '../components/MemberPickerModal';
 import { computeShortages as computeShortagesPure, type Shortage } from '../../utils/stockGate';
+import { notifyError } from '../../utils/notifyError';
 
 type Step =
   | { type: 'idle' }
@@ -276,7 +277,7 @@ export default function HomeScreen() {
       memberId: stash.memberId as Id<'members'> | undefined,
       discount: stash.discount > 0 ? stash.discount : undefined,
       amountPaid,
-    }).catch(console.error);
+    }).catch(e => notifyError('Transaksi gagal disimpan — masukkan ulang pesanan', e));
   }, [createTx]);
 
   const handleComplete = useCallback(() => {

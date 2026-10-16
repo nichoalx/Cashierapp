@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 // @vitest-environment edge-runtime
 import { convexTest } from "convex-test";
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { api } from "./_generated/api";
 import schema from "./schema";
 
@@ -133,5 +133,95 @@ describe("transactions.create — stock gate", () => {
         items: [{ productId, quantity: 1, unitPrice: 10, totalAmount: 10 }],
       }),
     ).rejects.toThrow(/Unauthorized/);
+  });
+});
+
+describe("transactions.create — order date", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  test("uses the Jakarta calendar day, not UTC", async () => {
+    vi.useFakeTimers();
+    // 23:30 UTC on the 16th is 06:30 WIB on the 17th.
+    vi.setSystemTime(new Date("2026-10-16T23:30:00Z"));
+    const t = newBackend();
+    const asUser = t.withIdentity(IDENTITY);
+    const productId = await seedProduct(t, { name: "MRB", unit: "kg", stockQty: 100 });
+
+    const txId = await asUser.mutation(api.transactions.create, {
+      items: [{ productId, quantity: 1, unitPrice: 10, totalAmount: 10 }],
+    });
+
+    const tx = await t.run(async (ctx) => await ctx.db.get(txId));
+    expect(tx?.date).toBe("2026-10-17");
+  });
+});
+
+describe("transactions.update — stock", () => {
+  /** Plastic product with two sizes, 50 pcs of each in stock. */
+  async function seedPlastic(t: ReturnType<typeof convexTest>) {
+    return await t.run(async (ctx) => {
+      const productId = await ctx.db.insert("products", {
+        name: "P", fullName: "Plastik", color: "#38b2ac", unit: "pcs", isActive: true,
+      });
+      const small = await ctx.db.insert("productVariants", { productId, variantType: "size", variantValue: "5x8" });
+      const large = await ctx.db.insert("productVariants", { productId, variantType: "size", variantValue: "10x12" });
+      await ctx.db.insert("stock", { productId, variantId: small, quantity: 50, minThreshold: 0 });
+      await ctx.db.insert("stock", { productId, variantId: large, quantity: 50, minThreshold: 0 });
+      return { productId, small, large };
+    });
+  }
+
+  async function stockOf(t: ReturnType<typeof convexTest>, variantId: string) {
+    return await t.run(async (ctx) =>
+      (await ctx.db.query("stock").collect()).find(s => s.variantId === variantId)!.quantity);
+  }
+
+  async function onlyItem(t: ReturnType<typeof convexTest>) {
+    return await t.run(async (ctx) => (await ctx.db.query("transactionItems").first())!);
+  }
+
+  test("changing a plastic size moves the stock from the old size to the new one", async () => {
+    const t = newBackend();
+    const asUser = t.withIdentity(IDENTITY);
+    const { productId, small, large } = await seedPlastic(t);
+    const txId = await asUser.mutation(api.transactions.create, {
+      items: [{ productId, variantId: small, quantity: 10, unitPrice: 500, totalAmount: 5000 }],
+    });
+    expect(await stockOf(t, small)).toBe(40);
+
+    const item = await onlyItem(t);
+    await asUser.mutation(api.transactions.update, {
+      txId, updatedItems: [{ id: item._id, quantity: 10, totalAmount: 5000, variantId: large }], removedItemIds: [],
+    });
+
+    expect(await stockOf(t, small)).toBe(50);
+    expect(await stockOf(t, large)).toBe(40);
+  });
+
+  test("rejects an edit that draws more than is in stock, writing nothing", async () => {
+    const t = newBackend();
+    const asUser = t.withIdentity(IDENTITY);
+    const { productId, small } = await seedPlastic(t);
+    const txId = await asUser.mutation(api.transactions.create, {
+      items: [{ productId, variantId: small, quantity: 10, unitPrice: 500, totalAmount: 5000 }],
+    });
+    const item = await onlyItem(t);
+
+    // 10 already drawn + 40 left in stock: asking for 100 needs 90 more.
+    await expect(
+      asUser.mutation(api.transactions.update, {
+        txId, updatedItems: [{ id: item._id, quantity: 100, totalAmount: 50_000 }], removedItemIds: [],
+      }),
+    ).rejects.toThrow(/Stok tidak cukup/);
+    expect(await stockOf(t, small)).toBe(40);
+    expect((await onlyItem(t)).quantity).toBe(10);
+
+    // Within stock it goes through: 10 → 30 draws 20 more.
+    await asUser.mutation(api.transactions.update, {
+      txId, updatedItems: [{ id: item._id, quantity: 30, totalAmount: 15_000 }], removedItemIds: [],
+    });
+    expect(await stockOf(t, small)).toBe(20);
   });
 });

@@ -130,6 +130,12 @@ export const updateAllVariantPrices = mutation({
       .filter(q => q.eq(q.field("variantId"), undefined))
       .first();
     if (basePrice) {
+      await ctx.db.insert("priceHistory", {
+        productId: args.productId,
+        oldPrice: basePrice.price,
+        newPrice: args.price,
+        changedAt: now,
+      });
       await ctx.db.patch(basePrice._id, { price: args.price, updatedAt: now });
     } else {
       await ctx.db.insert("prices", { productId: args.productId, price: args.price, updatedAt: now });
@@ -146,6 +152,13 @@ export const updateAllVariantPrices = mutation({
         .withIndex("by_variantId", q => q.eq("variantId", variant._id))
         .first();
       if (varPrice) {
+        await ctx.db.insert("priceHistory", {
+          productId: args.productId,
+          variantId: variant._id,
+          oldPrice: varPrice.price,
+          newPrice: args.price,
+          changedAt: now,
+        });
         await ctx.db.patch(varPrice._id, { price: args.price, updatedAt: now });
       } else {
         await ctx.db.insert("prices", { productId: args.productId, variantId: variant._id, price: args.price, updatedAt: now });

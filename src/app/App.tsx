@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { RouterProvider } from 'react-router';
+import { Toaster } from 'sonner';
 import { router } from './routes';
 import { AppProvider } from './store';
 import { AuthProvider } from './AuthContext';
@@ -33,6 +34,12 @@ export default function App() {
   return (
     <AuthProvider>
       <ViewportSync />
+      <Toaster
+        position="top-center"
+        richColors
+        offset={{ top: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
+        mobileOffset={{ top: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
+      />
       <AppProvider>
         <RouterProvider router={router} />
       </AppProvider>

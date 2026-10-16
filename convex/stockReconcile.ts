@@ -1,4 +1,4 @@
-import { internalQuery, query } from "./_generated/server";
+import { internalQuery } from "./_generated/server";
 import { v } from "convex/values";
 
 export const check = internalQuery({
@@ -69,7 +69,7 @@ export const check = internalQuery({
 
 // Find transaction items near a target quantity for two products — used to
 // track down mis-labelled entries (e.g. BH entered instead of SBS).
-export const findMislabel = query({
+export const findMislabel = internalQuery({
   args: { nameA: v.string(), nameB: v.string(), targetQty: v.number(), tolerance: v.number() },
   handler: async (ctx, args) => {
     const pA = await ctx.db.query("products").withIndex("by_name", q => q.eq("name", args.nameA)).first();
@@ -98,7 +98,7 @@ export const findMislabel = query({
 });
 
 // List ALL transaction items for a named product, sorted by date/order.
-export const listAllForProduct = query({
+export const listAllForProduct = internalQuery({
   args: { productName: v.string() },
   handler: async (ctx, args) => {
     const product = await ctx.db.query("products").withIndex("by_name", q => q.eq("name", args.productName)).first();
@@ -117,7 +117,7 @@ export const listAllForProduct = query({
 // Returns per-product: total sold, total added, current stock, and implied
 // opening stock on the start date (current + sold - added).
 // Run via: npx convex run stockReconcile:audit --args '{"fromDate":"2026-05-26"}'
-export const audit = query({
+export const audit = internalQuery({
   args: { fromDate: v.string() },
   handler: async (ctx, args) => {
     const fromTs = new Date(args.fromDate).getTime();

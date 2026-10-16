@@ -9,7 +9,7 @@ export const list = query({
     if (!userId) return null;
 
     // Flat read: one document per member, no fan-out. outstanding/visitCount/
-    // lastVisitDate are denormalized onto the member by recomputeMemberStats().
+    // lastVisitDate are denormalized onto the member (see memberStats.ts).
     // ctx.storage.getUrl is not a database read, so it costs nothing here.
     const members = await ctx.db.query("members").collect();
 

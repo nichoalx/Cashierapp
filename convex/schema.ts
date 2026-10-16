@@ -54,8 +54,9 @@ export default defineSchema({
     phone: v.optional(v.string()),
     color: v.optional(v.string()),
     profileImageId: v.optional(v.id("_storage")),
-    // Denormalized stats. Recomputed by recomputeMemberStats() on every write
-    // that can change them (transaction create/update/remove, payment record).
+    // Denormalized stats, kept current by delta on every transaction and
+    // payment write (memberStats.ts) and recomputed nightly from source by
+    // migrations:backfillMemberStats.
     // Optional because rows created before the backfill won't have them —
     // readers fall back to 0 / undefined.
     outstanding: v.optional(v.number()),    // Sum of unpaid balance across all transactions

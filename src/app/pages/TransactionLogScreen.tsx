@@ -9,6 +9,7 @@ import { PriceTicker } from '../components/PriceTicker';
 import { PriceEditorModal } from '../components/PriceEditorModal';
 import { printReceipt } from '../../utils/printer';
 import { tap, softTap, confirmTap } from '../../utils/haptics';
+import { notifyError } from '../../utils/notifyError';
 
 const SHD_RAISED_STD    = '4px 4px 9px #c8cad1, -4px -4px 9px #ffffff';
 const SHD_RAISED_LIST   = '3px 3px 7px #c8cad1, -3px -3px 7px rgba(255,255,255,0.92)';
@@ -854,8 +855,7 @@ export default function TransactionLogScreen() {
   const updateTx   = useMutation(api.transactions.update);
   const removeTx   = useMutation(api.transactions.remove);
   const syncAll          = useAction(api.sheetsSync.syncAll);
-  const takeSnapshot     = useMutation(api.sheetsSyncData.takeSnapshotNow);
-  const reconstructSnap  = useMutation(api.sheetsSyncData.reconstructSnapshotForDate);
+  const reconstructSnap  = useAction(api.sheetsSyncData.reconstructSnapshotForDate);
 
   const [sheetsSyncState, setSheetsSyncState] = useState<'idle' | 'syncing' | 'done' | 'error'>('idle');
   const [sheetsSyncError, setSheetsSyncError] = useState<string | null>(null);
@@ -965,17 +965,13 @@ export default function TransactionLogScreen() {
 
   useEffect(() => { pendingDeleteRef.current = pendingDelete; }, [pendingDelete]);
 
-  // Automatically snapshot today's stock whenever the user views today — no manual daily sync needed
-  useEffect(() => {
-    if (isSameDay(selectedDate, new Date())) {
-      takeSnapshot().catch(() => {});
-    }
-  }, [selectedDate, takeSnapshot]);
-
   useEffect(() => {
     return () => {
       if (deleteTimerRef.current) clearTimeout(deleteTimerRef.current);
-      if (pendingDeleteRef.current) removeTx({ txId: pendingDeleteRef.current.id as Id<'transactions'> }).catch(console.error);
+      if (pendingDeleteRef.current) {
+        removeTx({ txId: pendingDeleteRef.current.id as Id<'transactions'> })
+          .catch(e => notifyError('Transaksi gagal dihapus', e));
+      }
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1293,12 +1289,14 @@ export default function TransactionLogScreen() {
                             e.stopPropagation();
                             if (pendingDeleteRef.current && deleteTimerRef.current) {
                               clearTimeout(deleteTimerRef.current);
-                              removeTx({ txId: pendingDeleteRef.current.id as Id<'transactions'> }).catch(console.error);
+                              removeTx({ txId: pendingDeleteRef.current.id as Id<'transactions'> })
+                                .catch(e => notifyError('Transaksi gagal dihapus', e));
                             }
                             const { id, orderNumber } = tx;
                             setPendingDelete({ id, orderNumber });
                             deleteTimerRef.current = setTimeout(() => {
-                              removeTx({ txId: id as Id<'transactions'> }).catch(console.error);
+                              removeTx({ txId: id as Id<'transactions'> })
+                                .catch(e => notifyError('Transaksi gagal dihapus', e));
                               setPendingDelete(null);
                               deleteTimerRef.current = null;
                             }, 5000);
@@ -1421,7 +1419,7 @@ export default function TransactionLogScreen() {
               remarks: remarks || undefined,
               memberId: memberId as Id<'members'> | undefined,
               discount,
-            }).catch(console.error);
+            }).catch(e => notifyError('Perubahan transaksi gagal disimpan', e));
             const txId = editingTx.id;
             if (savedIdTimerRef.current) clearTimeout(savedIdTimerRef.current);
             setSavedId(txId);

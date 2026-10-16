@@ -2,7 +2,7 @@
 
 import { google } from "googleapis";
 import { v } from "convex/values";
-import { action } from "./_generated/server";
+import { action, internalAction } from "./_generated/server";
 import type { ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { getAuthUserId } from "@convex-dev/auth/server";
@@ -409,10 +409,9 @@ async function buildMonthGrid(args: {
 
   // Price history column (Y–Z, indices 24–25)
   const nonVariantHistory = args.priceHistory.filter(h => !h.variantId);
-  const fmtDMY = (ts: number) => {
-    const d = new Date(ts);
-    return `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()}`;
-  };
+  // dd/mm/yyyy in the shop's timezone — the action runtime clock is UTC, so a
+  // change saved before 07:00 WIB would otherwise be labelled with the day before.
+  const fmtDMY = (ts: number) => new Date(ts).toLocaleDateString("en-GB", { timeZone: "Asia/Jakarta" });
   const priceAt = (productId: Id<"products">, t: number): number => {
     const entries = nonVariantHistory
       .filter(h => h.productId === productId)
@@ -422,25 +421,36 @@ async function buildMonthGrid(args: {
     if (entries.length > 0) return entries[0].oldPrice;
     return args.currentPrices.find(p => p.productId === productId && !p.variantId)?.price ?? 0;
   };
-  const rawBreakpoints = [...new Set(nonVariantHistory.map(h => h.changedAt))].sort((a, b) => a - b);
-  // Remove breakpoints where no product price actually changed (e.g. accidental same-value edits)
+  // The price editor saves each product separately, so one update leaves several
+  // history rows seconds apart. Treat rows within PRICE_SESSION_GAP of each other
+  // as one change, priced as of its last row — otherwise every row became its
+  // own seconds-long period with only some of the new prices applied.
+  const PRICE_SESSION_GAP = 10 * 60_000;
+  const changeTimes = [...new Set(nonVariantHistory.map(h => h.changedAt))].sort((a, b) => a - b);
+  const sessions: Array<{ start: number; end: number }> = [];
+  for (const t of changeTimes) {
+    const last = sessions[sessions.length - 1];
+    if (last && t - last.end <= PRICE_SESSION_GAP) last.end = t;
+    else sessions.push({ start: t, end: t });
+  }
+  // Remove sessions where no product price actually changed (e.g. accidental same-value edits)
   const priceSetKey = (ts: number) => args.priceProducts.map(p => `${p.productId}:${priceAt(p.productId, ts)}`).join('|');
-  const breakpoints: number[] = [];
-  for (const bp of rawBreakpoints) {
-    if (breakpoints.length === 0 || priceSetKey(bp) !== priceSetKey(breakpoints[breakpoints.length - 1])) {
-      breakpoints.push(bp);
+  const breakpoints: Array<{ start: number; end: number }> = [];
+  for (const s of sessions) {
+    if (breakpoints.length === 0 || priceSetKey(s.end) !== priceSetKey(breakpoints[breakpoints.length - 1].end)) {
+      breakpoints.push(s);
     }
   }
   const priceHistoryColumn: (string | number)[][] = [];
   const priceHistoryHeaderRows: number[] = [];
   const nowTs = Date.now();
   for (let i = 0; i < breakpoints.length; i++) {
-    const start = breakpoints[i];
-    const end = breakpoints[i + 1] ?? nowTs;
+    const start = breakpoints[i].start;
+    const end = breakpoints[i + 1]?.start ?? nowTs;
     priceHistoryHeaderRows.push(priceHistoryColumn.length + 1); // +1 for grid header row
     priceHistoryColumn.push([`${fmtDMY(start)} - ${fmtDMY(end)}`, ""]);
     for (const p of args.priceProducts) {
-      priceHistoryColumn.push([p.label, priceAt(p.productId, start)]);
+      priceHistoryColumn.push([p.label, priceAt(p.productId, breakpoints[i].end)]);
     }
     priceHistoryColumn.push(["", ""]); // separator
   }
@@ -1206,7 +1216,7 @@ async function applyMembersFormatting(
 // ─── Workers (reusable across public actions) ────────────────────────────────
 
 async function doSyncMonth(ctx: ActionCtx, yearMonth: string) {
-  const data = await ctx.runQuery(internal.sheetsSyncData.getMonthData, { yearMonth });
+  const data = await ctx.runAction(internal.sheetsSyncData.loadMonthData, { yearMonth });
   const tab = tabNameForMonth(yearMonth);
   const { sheets, sheetId } = getSheetsClient();
   const previousCalendarDate = previousDate(`${yearMonth}-01`);
@@ -1295,15 +1305,39 @@ export const syncMembers = action({
   },
 });
 
+/** "YYYY-MM" of today in the shop's timezone — the Convex runtime clock is UTC. */
+function currentJakartaMonth() {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Jakarta" }).slice(0, 7);
+}
+
 export const syncAll = action({
   args: {},
   handler: async (ctx): Promise<{ ok: true; tab: string; monthRows: number; memberRows: number }> => {
     const userId = await getAuthUserId(ctx);
     if (!userId) throw new Error("Unauthorized");
-    const now = new Date();
-    const yearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-    const month = await doSyncMonth(ctx, yearMonth);
+    const month = await doSyncMonth(ctx, currentJakartaMonth());
     const members = await doSyncMembers(ctx);
     return { ok: true, tab: month.tab, monthRows: month.rows, memberRows: members.rows };
+  },
+});
+
+// ─── Internal actions ────────────────────────────────────────────────────────
+
+/**
+ * syncAll without a signed-in user: run nightly by crons.ts, and usable to
+ * re-sync a past month's tab from the CLI:
+ *   npx convex run sheetsSync:syncInternal '{"yearMonth":"2026-09"}'
+ * Defaults to the current Jakarta month.
+ */
+export const syncInternal = internalAction({
+  args: { yearMonth: v.optional(v.string()) },
+  handler: async (ctx, args): Promise<{ tab: string; monthRows: number; memberRows: number }> => {
+    const yearMonth = args.yearMonth ?? currentJakartaMonth();
+    if (!/^\d{4}-\d{2}$/.test(yearMonth)) {
+      throw new Error(`yearMonth must be "YYYY-MM"; got ${yearMonth}`);
+    }
+    const month = await doSyncMonth(ctx, yearMonth);
+    const members = await doSyncMembers(ctx);
+    return { tab: month.tab, monthRows: month.rows, memberRows: members.rows };
   },
 });
